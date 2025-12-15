@@ -6,7 +6,7 @@ set -e
 source "$(dirname "$0")/utils.sh"
 
 # Set the compose command explicitly to use docker compose subcommand
-COMPOSE_CMD="docker compose"
+COMPOSE_CMD="docker-compose"
 
 # Navigate to the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"

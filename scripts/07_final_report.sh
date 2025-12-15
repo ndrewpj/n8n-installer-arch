@@ -451,3 +451,5 @@ echo "======================================================================"
 echo
 log_info "Thank you for using this repository!"
 echo
+
+#chsh -s /usr/bin/zsh

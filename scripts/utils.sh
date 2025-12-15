@@ -54,7 +54,7 @@ log_info() {
 # Ensure whiptail is available
 require_whiptail() {
     if ! command -v whiptail >/dev/null 2>&1; then
-        log_error "'whiptail' is not installed. Install with: sudo apt-get install -y whiptail"
+        log_error "'whiptail' is not installed. Install with: sudo pacman -Sy libnewt"
         exit 1
     fi
 }

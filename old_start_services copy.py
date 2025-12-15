@@ -173,7 +173,7 @@ def stop_existing_containers():
     print("Stopping and removing existing containers for the unified project 'localai'...")
     
     # Base command
-    cmd = ["docker-compose", "-p", "localai"]
+    cmd = ["docker", "compose", "-p", "localai"]
 
     # Get all profiles from the main docker-compose.yml to ensure all services can be brought down
     all_profiles = get_all_profiles("docker-compose.yml")
@@ -202,7 +202,7 @@ def start_supabase():
         return
     print("Starting Supabase services...")
     run_command([
-        "docker-compose", "-p", "localai", "-f", "supabase/docker/docker-compose.yml", "up", "-d"
+        "docker", "compose", "-p", "localai", "-f", "supabase/docker/docker-compose.yml", "up", "-d"
     ])
 
 def start_dify():
@@ -212,7 +212,7 @@ def start_dify():
         return
     print("Starting Dify services...")
     run_command([
-        "docker-compose", "-p", "localai", "-f", "dify/docker/docker-compose.yaml", "up", "-d"
+        "docker", "compose", "-p", "localai", "-f", "dify/docker/docker-compose.yaml", "up", "-d"
     ])
 
 def start_local_ai():
@@ -221,12 +221,12 @@ def start_local_ai():
 
     # Explicitly build services and pull newer base images first.
     print("Checking for newer base images and building services...")
-    build_cmd = ["docker-compose", "-p", "localai", "-f", "docker-compose.yml", "build", "--pull"]
+    build_cmd = ["docker", "compose", "-p", "localai", "-f", "docker-compose.yml", "build", "--pull"]
     run_command(build_cmd)
 
     # Now, start the services using the newly built images. No --build needed as we just built.
     print("Starting containers...")
-    up_cmd = ["docker-compose", "-p", "localai", "-f", "docker-compose.yml", "up", "-d"]
+    up_cmd = ["docker", "compose", "-p", "localai", "-f", "docker-compose.yml", "up", "-d"]
     run_command(up_cmd)
 
 def generate_searxng_secret_key():

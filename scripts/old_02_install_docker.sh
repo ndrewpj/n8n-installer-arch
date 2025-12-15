@@ -54,8 +54,8 @@ if command -v docker &> /dev/null; then
     log_info "Docker is already installed."
     docker --version
     # Check for Docker Compose plugin
-    if docker compose version &> /dev/null; then
-        docker compose version
+    if docker-compose version &> /dev/null; then
+        docker-compose version
     else
         log_error "Docker Compose plugin not found. Consider reinstalling or checking the installation."
         exit 1

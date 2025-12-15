@@ -2,21 +2,28 @@
 
 set -e
 
+# chsh -s /usr/bin/bash
+
 # Source the utilities file
 source "$(dirname "$0")/utils.sh"
 
-export DEBIAN_FRONTEND=noninteractive
+#export DEBIAN_FRONTEND=noninteractive
 
 # System Update
 log_info "Updating package list and upgrading the system..."
-apt update -y && apt upgrade -y
+#apt update -y && apt upgrade -y
+pacman -Syu --needed --noconfirm -q
 
 # Installing Basic Utilities
 log_info "Installing standard CLI tools..."
-apt install -y \
-  htop git curl make unzip ufw fail2ban python3 psmisc whiptail \
-  build-essential ca-certificates gnupg lsb-release openssl \
-  debian-keyring debian-archive-keyring apt-transport-https python3-pip python3-dotenv python3-yaml
+
+pacman -Sy -q --noconfirm htop git curl make unzip ufw fail2ban python psmisc libnewt newt base-devel ca-certificates gnupg \
+  lsb-release openssl archlinux-keyring python-pip python-dotenv python-yaml
+
+#apt install -y \
+#  htop git curl make unzip ufw fail2ban python3 psmisc whiptail \
+#  build-essential ca-certificates gnupg lsb-release openssl \
+#  debian-keyring debian-archive-keyring apt-transport-https python3-pip python3-dotenv python3-yaml
 
 # Configuring Firewall (UFW)
 log_info "Configuring firewall (UFW)..."
@@ -41,10 +48,10 @@ sleep 1
 fail2ban-client status sshd
 
 # Automatic Security Updates
-log_info "Enabling automatic security updates..."
-apt install -y unattended-upgrades
+#log_info "Enabling automatic security updates..."
+#apt install -y unattended-upgrades
 # Automatic confirmation for dpkg-reconfigure
-echo "y" | dpkg-reconfigure --priority=low unattended-upgrades
+#echo "y" | dpkg-reconfigure --priority=low unattended-upgrades
 
 # Configure vm.max_map_count for Elasticsearch (required for RAGFlow)
 log_info "Configuring vm.max_map_count for Elasticsearch..."
