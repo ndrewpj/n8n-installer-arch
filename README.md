@@ -1,4 +1,4 @@
-# This is n8n installer for Arch-based Linux OS. I've tested it on CachyOS. Original repo and credits: https://github.com/kossakovsky/n8n-install
+# This is n8n installer for Arch-based Linux OS. Tested on CachyOS. Original repo and credits: https://github.com/kossakovsky/n8n-install
 
 # n8n Install
 
