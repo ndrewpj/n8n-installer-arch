@@ -112,7 +112,8 @@ Get started quickly with a vast library of pre-built automations (optional impor
 The recommended way to install is using the provided main installation script.
 
 1.  Connect to your server via SSH.
-2.  Run the following command:
+2.  For Arch-based Linux OS I recommend to switch temporarily to bash instead of fish: https://wiki.cachyos.org/configuration/post_install_setup/#changing-the-default-shell
+3.  Run the following command:
 
     ```bash
     git clone https://github.com/kossakovsky/n8n-install && cd n8n-install && sudo bash ./scripts/install.sh
@@ -138,7 +139,9 @@ Upon successful completion, the script will display a summary report. This repor
 
 ## ⚡️ Quick Start and Usage
 
-After successful installation, your services are up and running! Here's how to get started:
+After successful installation, revert back to fish default shell from bash: https://wiki.cachyos.org/configuration/post_install_setup/#changing-the-default-shell
+
+Your services are up and running! Here's how to get started:
 
 1.  **Access Your Services:**
     The installation script provided a summary report with all access URLs and credentials. Please refer to that report. The main services will be available at the following addresses (replace `yourdomain.com` with your actual domain):
