@@ -119,7 +119,7 @@ The recommended way to install is using the provided main installation script.
 3.  Run the following command:
 
     ```bash
-    git clone https://github.com/kossakovsky/n8n-install && cd n8n-install && sudo bash ./scripts/install.sh
+    git clone https://github.com/ndrewpj/n8n-install && cd n8n-install && sudo bash ./scripts/install.sh
     ```
 
 This single command automates the entire setup process, including:
