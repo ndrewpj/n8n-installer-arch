@@ -1,4 +1,7 @@
 # This is n8n installer for Arch-based Linux OS. Tested on CachyOS. Original repo and credits: https://github.com/kossakovsky/n8n-install
+**Known issues:**
+- n8n-import is not working
+- manual switching to bash as default shell is needed (see below)
 
 # n8n Install
 
