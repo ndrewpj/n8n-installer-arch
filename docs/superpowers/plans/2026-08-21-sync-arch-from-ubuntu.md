@@ -152,7 +152,11 @@ dpkg-reconfigure; add-apt-repository). apt install/update/remove COMMAND lines a
 by translate.sh's dedicated command parser in Task 2 — they must NOT appear in idioms.map (the
 `unattended-upgrades` install belongs to the parser, which drops it per packages.map
 `unattended-upgrades\t-`). No idiom line may use a third column; every line is strictly
-`pattern<TAB>replacement`. Pattern matching is substring/regex-based and case-sensitive as written.)
+`pattern<TAB>replacement`. Pattern matching is substring/regex-based and case-sensitive as written;
+patterns should target the distinctive core substring (e.g. `download.docker.com/linux/ubuntu/gpg`,
+`sources.list.d/docker.list`, `dpkg --print-architecture`) rather than requiring the exact full line,
+so upstream formatting drift (different flags/ordering) still matches. Map rows apply in file order and
+first match wins, so a later `export DEBIAN_FRONTEND=dialog` row does not re-add text a drop row removed.)
 
 - [ ] **Step 4: Write `rules/fork-exclude`**
 
@@ -256,6 +260,7 @@ input="$1"
 awk -F'\t' 'NR==FNR { if (NF>=2) pkgmap[$1]=$2; next } { ... }' "$RULES_DIR/packages.map" "$input"
 # A second pass loads idioms.map (either a second awk -f invocation with
 # "$RULES_DIR/idioms.map" or a single awk reading both rule files via ARGIND).
+# Substitution order is fixed: idioms.map must run BEFORE the apt command parser.
 # The tests assert the resulting behavior; keep both map files wired so the
 # declarative rules are genuinely consumed.
 ```
