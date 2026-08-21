@@ -25,6 +25,7 @@ Files created/modified under the fork repo:
       parse_rules.sh             # read targets.map / packages.map / idioms.map into arrays
     tests/
       test_translate.sh          # asserts translate.sh output for fixtures
+      test_targets.sh            # asserts targets.map resolves every upstream path to spec action
       test_sync_dryrun.sh        # asserts sync.sh --dry-run produces expected plan
       fixtures/                   # sample Ubuntu scripts for translate tests
         system_prep_ubuntu.sh
@@ -225,13 +226,26 @@ input="$1"
 # 6. Replace install-hint texts referencing apt.
 # 7. Guard: if any line contains "pacman -Sy " (bare, not -Syu/-S), exit 1.
 
-awk -F'\t' '
-  NR==FNR { if (NF>=2) pkgmap[$1]=$2; next }
-  { ... apply substitutions ... }
-' "$RULES_DIR/packages.map" "$input"
+# The awk body MUST consume BOTH packages.map AND idioms.map — declarative rules
+# are the source of truth; the idiom drops (DEBIAN_FRONTEND, docker repo/key block,
+# dpkg-reconfigure, add-apt-repository, keyrings, caddy curl repo lines, apt-key,
+# unattended-upgrades install) must NOT be hardcoded in the awk body. Contract:
+#   - packages.map: NF>=2 -> pkgmap[$1]=$2. When emitting a pacman install line,
+#     entries whose package value is "-" (e.g. unattended-upgrades,
+#     software-properties-common) are FILTERED OUT so the line has no dangling token.
+#   - idioms.map: NF==2 -> idmap[$1]=$2; each line matching a pattern key is
+#     replaced by its replacement (empty replacement = drop the line).
+#   - Substitution order is fixed: idioms.map drops/rewrites first, then the apt
+#     command parser rewrites update/upgrade/install/remove invocations.
+
+awk -F'\t' 'NR==FNR { if (NF>=2) pkgmap[$1]=$2; next } { ... }' "$RULES_DIR/packages.map" "$input"
+# A second pass loads idioms.map (either a second awk -f invocation with
+# "$RULES_DIR/idioms.map" or a single awk reading both rule files via ARGIND).
+# The tests assert the resulting behavior; keep both map files wired so the
+# declarative rules are genuinely consumed.
 ```
 
-Provide the complete awk body (full code in implementation — the plan specifies behavior, the implementer writes exact awk).
+Provide the complete awk body (full code in implementation — the plan specifies behavior and the two-rules-file contract; the implementer writes the exact awk).
 
 - [ ] **Step 4: Run tests, verify pass**
 
