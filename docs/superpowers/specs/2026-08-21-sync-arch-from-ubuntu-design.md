@@ -48,7 +48,7 @@ The skill is a directory bundle discovered by the harness at the project root (`
 | `scripts/translate.sh` | Applies rules to a file (or stdin) and emits the translated output | `bash translate.sh <file>` | rules/ |
 | `rules/packages.map` | `python3-pip→python-pip`, `build-essential→base-devel`, `whiptail→libnewt`, `docker-ce*→docker/docker-compose`, `software-properties-common→(drop)`, etc. | read by translate.sh | — |
 | `rules/idioms.map` | `apt update`→`pacman -Syu`, `DEBIAN_FRONTEND=noninteractive`→(drop), `add-apt-repository universe`→(drop), `dpkg-reconfigure`→(drop), `apt-key`→(drop), `unattended-upgrades`→(drop), `install .deb`→yay/pacman, etc. | read by translate.sh | — |
-| `rules/targets.map` | **The single per-path classification source.** Lines of the form `<pattern>\t<action>` where action ∈ `translate | copy | preserve | ignore | review`. Longest-match wins; a missing pattern defaults to `copy` for known upstream files and `review` for anything the engine cannot classify confidently. This is what the data-flow §4 `-copy`/`-translate` terms refer to. | read by sync.sh to classify every changed path | — |
+| `rules/targets.map` | **The single per-path classification source.** Lines of the form `<pattern>\t<action>` where action ∈ `translate | copy | preserve | ignore | review | merge`. Longest-match wins; a missing pattern defaults to `copy` for paths present in the current fork baseline and `review` for anything the engine cannot classify confidently. `merge` files (compose, README, GPU compose, env templates) are model-handled — the classifier records them for the model and does not copy/translate them. This is what the data-flow §4 `-copy`/`-translate` terms refer to. | read by sync.sh to classify every changed path | — |
 | `rules/fork-exclude` | Paths that are fork-owned and must **never** be overwritten: `old_02_install_docker.sh`, `n8n_pipe.py`, `old_start_services copy.py`, `certs/`. (`README.md`/`docker-compose.yml` are handled via `merge`, not preserve.) | read by sync.sh (supersedes `targets.map` action) | — |
 | `rules/ignore.map` | Paths upstream has no meaningful CachyOS equivalent for and should be dropped silently (e.g. `telemetry.sh`) | read by sync.sh | — |
 | `templates/SYNC_REPORT.md` | per-file: translated / copied / preserved / skipped / needs-human-review / new | filled by sync.sh | — |
@@ -146,7 +146,7 @@ but a planning baseline is pinned here.
 | `git.sh` | `translate` | Git-pull-rebase helper upstream uses; port |
 | `databases.sh` | `translate` | DB init before other services; port |
 | `apply_update.sh`, `docker_cleanup.sh`, `update.sh` | `translate` | Already in fork; pull latest and translate |
-| `restart.sh`, `setup_custom_tls.sh`, `doctor.sh`, `import_workflows.sh`, `download_top_workflows.sh`, `generate_n8n_workers.sh`, `generate_welcome_page.sh` | `review` | Functional scripts upstream added; **copy verbatim + flag** for user confirmation (import/welcome behavior is opinionated; they carry no distro idioms) |
+| `restart.sh`, `setup_custom_tls.sh`, `doctor.sh`, `import_workflows.sh`, `download_top_workflows.sh`, `generate_n8n_workers.sh`, `generate_welcome_page.sh` | `review` | Functional scripts upstream added; **copy verbatim + flag** for user confirmation (import/welcome behavior is opinionated; though they carry no distro idioms, `review` flags them because their behavior warrants a look, not because they need translation) |
 | `telemetry.sh`, `update_preview.sh` | `ignore` | Telemetry/preview plumbing has no CachyOS value and upstream-specific services; drop silently |
 
 ### Root / other dirs
@@ -155,7 +155,9 @@ but a planning baseline is pinned here.
 |---|---|---|
 | `docker-compose.yml` | `merge` | Fork's compose diverges (fewer services). Model does a selective merge: port new upstream services into the fork compose rather than blind overwrite; stops for user confirmation. |
 | `docker-compose.ollama-gpu-devices.yml`, `docker-compose.invokeai-gpu-devices.yml` | `merge` | New GPU-pinning files; model ports them after confirming fork's GPU profile, stops for user |
-| `Caddyfile`, `cloudflare-instructions.md`, `LICENSE`, `.gitignore`, `.env.example` | `copy` | No distro idioms, or present in fork; copy latest |
+| `Caddyfile` | `merge` | Fork's reverse-proxy config is customized (env-var hostnames, basic auth, LETSENCRYPT_EMAIL); model merges upstream additions without clobbering fork config, stops for user |
+| `cloudflare-instructions.md`, `LICENSE`, `.gitignore` | `copy` | No distro idioms, or present in fork; copy latest |
+| `.env.example` | `merge` | Fork's template is profile-based (~13KB: COMPOSE_PROFILES, N8N_WORKER_COUNT, GPU profiles) and diverges from upstream; model merges any new upstream vars while keeping fork-only profile vars, stops for user |
 | `CHANGELOG.md`, `VERSION`, `Makefile` | `copy` | Optional metadata; copy latest |
 | `README.md` | `merge` | Fork-customized (Arch preamble); model merges upstream changelog/feature notes into fork README, stops for user |
 | `grafana/`, `prometheus/`, `searxng/`, `n8n/`, `caddy-addon/`, `paddlex/`, `python-runner/`, `welcome/` | `copy` | Static config/data dirs; copy latest (fork dirs exist) |
