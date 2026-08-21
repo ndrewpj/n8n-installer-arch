@@ -135,14 +135,24 @@ add-apt-repository universe -y
 echo "y" | dpkg-reconfigure --priority=low unattended-upgrades	
 apt-key	
 install -m 0755 -d /etc/apt/keyrings	
-deb [arch=
+deb [arch=	
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg	
+chmod a+r /etc/apt/keyrings/docker.gpg	
+tee /etc/apt/sources.list.d/docker.list	
+dpkg --print-architecture	
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg	
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list	
+sudo apt-get install -y whiptail	sudo pacman -S libnewt
 ```
 
-(NOTE: idioms.map holds ONLY simple textual drop/rewrite substitutions. apt install/update/remove
-command lines are handled EXCLUSIVELY by translate.sh's dedicated command parser in Task 2 — they must
-NOT also appear in idioms.map (remove the `apt install -y unattended-upgrades` line above; it belongs to
-the parser, which drops unattended-upgrades per packages.map `unattended-upgrades\t-`). No idiom line may
-use a third column; every line is strictly `pattern<TAB>replacement`.)
+(NOTE: idioms.map holds ONLY simple textual drop/rewrite substitutions and is EXHAUSTIVE — it must
+cover every non-command line the tests assert (docker repo/key block: `curl docker gpg`, `tee …
+docker.list`, `dpkg --print-architecture`; caddy curl repo lines; keyrings; apt-key; DEBIAN_FRONTEND;
+dpkg-reconfigure; add-apt-repository). apt install/update/remove COMMAND lines are handled EXCLUSIVELY
+by translate.sh's dedicated command parser in Task 2 — they must NOT appear in idioms.map (the
+`unattended-upgrades` install belongs to the parser, which drops it per packages.map
+`unattended-upgrades\t-`). No idiom line may use a third column; every line is strictly
+`pattern<TAB>replacement`. Pattern matching is substring/regex-based and case-sensitive as written.)
 
 - [ ] **Step 4: Write `rules/fork-exclude`**
 
@@ -215,10 +225,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RULES_DIR="$(cd "$SCRIPT_DIR/../rules" && pwd)"
 input="$1"
 
-# 1. Collapse apt update+upgrade into pacman -Syu.
-# 2. Rewrite apt install <pkgs> -> pacman -S --needed --noconfirm <mapped pkgs>,
-#    mapping each package via packages.map (split on the first TAB).
-# 3. apt remove <pkg> -> pacman -R <pkg>; apt remove -y -> pacman -R.
+# 1. Collapse apt update+upgrade into pacman -Syu. Both `apt` and `apt-get`
+#    forms are handled (apt-get update / apt-get install -y are aliases).
+# 2. Rewrite apt install <pkgs> / apt-get install -y <pkgs> ->
+#    pacman -S --needed --noconfirm <mapped pkgs> (drop packages whose map value
+#    is "-"), mapping each package via packages.map (split on the first TAB).
+#    If an install appears with NO preceding apt update in the same script, emit
+#    `pacman -Syu --needed --noconfirm <pkgs>` to guarantee a full upgrade first
+#    (spec Shell idiom mappings — the no-prior-update guard).
+# 3. apt remove <pkg> / apt remove -y <pkg> -> pacman -R <pkg> (drop the -y).
 # 4. Drop: DEBIAN_FRONTEND lines, dpkg-reconfigure lines, add-apt-repository,
 #    unattended-upgrades install, apt-key, docker apt repo/key blocks,
 #    curl cloudsmith caddy repo lines, install -d /etc/apt/keyrings.
