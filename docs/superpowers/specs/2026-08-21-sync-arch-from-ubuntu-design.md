@@ -80,6 +80,7 @@ If `.last-sync` is absent (first run) it means full reconciliation: baseline = f
    - `review` → **copy the file verbatim but log `needs-human-review`** — for files the engine cannot classify confidently (import/welcome/worker generators). Operational meaning is always "verbatim copy + flag"; never a merge.
    - `merge` → do NOT copy or translate. Stage a placeholder entry in `SYNC_REPORT.md`, then the model performs a selective, hand-guided merge of upstream content into the fork's divergent copy and stops for user confirmation. Used only for `docker-compose.yml`, `README.md`, and GPU-pinning compose files (see reconciliation table).
    - Deleted upstream files that are fork-owned → leave; log.
+   - Deleted upstream files that are **not** fork-owned and were previously `copy`ed/`translate`d (e.g. a deleted dir under `copy` like `grafana/`, a metadata file) → remove the fork's copy to stay in sync, unless it's in `fork-exclude` (then leave + log).
 5. Stages everything on a fresh branch `sync/from-upstream-<YYYYMMDD-HHMM>` (does not touch `main` or `.last-sync`).
 6. Writes `SYNC_REPORT.md` (untracked, not committed) summarizing the action per file and a list of files needing human eyes.
 7. Prints a short summary and stops. The model then presents the diff + report to the user for approval before any merge; afterwards `--finalize` advances the baseline.
