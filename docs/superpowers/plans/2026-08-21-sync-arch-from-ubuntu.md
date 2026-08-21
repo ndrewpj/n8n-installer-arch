@@ -40,7 +40,7 @@ Files created/modified under the fork repo:
   .last-sync                     # baseline (written only by --finalize; NOT committed content)
 ```
 
-Existing files modified: none during skill construction (the fork's own `scripts/` and root files are only touched by a real sync run, never by building the skill).
+Existing files modified: the fork's own `scripts/` and root files are only touched by a real sync run, never by building the skill. The lone exception is the fork's root `CLAUDE.md`, which gains a short "Sync with upstream" note in Task 6.
 
 ---
 ## Task 1: Skill scaffold + SKILL.md
@@ -131,17 +131,17 @@ docker-compose-plugin	docker-compose
 DEBIAN_FRONTEND=noninteractive	
 export DEBIAN_FRONTEND=dialog	
 add-apt-repository universe -y	
-apt install -y unattended-upgrades	
 echo "y" | dpkg-reconfigure --priority=low unattended-upgrades	
 apt-key	
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg	
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list	
 install -m 0755 -d /etc/apt/keyrings	
 deb [arch=
-apt remove -y	caddy	uninstall handled separately
 ```
 
-(NOTE: the actual engine processes install/update/remove commands through a dedicated parser (Task 2), so idioms.map holds the drop/rewrite lines that are simple textual substitutions; apt install/update/remove lists are handled by translate.sh's command parser.)
+(NOTE: idioms.map holds ONLY simple textual drop/rewrite substitutions. apt install/update/remove
+command lines are handled EXCLUSIVELY by translate.sh's dedicated command parser in Task 2 — they must
+NOT also appear in idioms.map (remove the `apt install -y unattended-upgrades` line above; it belongs to
+the parser, which drops unattended-upgrades per packages.map `unattended-upgrades\t-`). No idiom line may
+use a third column; every line is strictly `pattern<TAB>replacement`.)
 
 - [ ] **Step 4: Write `rules/fork-exclude`**
 
@@ -334,11 +334,15 @@ set -euo pipefail
 # 2. Ensure `upstream` remote -> https://github.com/kossakovsky/selfhost-ai ; git fetch upstream.
 # 3. If --finalize: resolve upstream/main hash, verify the sync branch is merged into
 #    HEAD, write new hash+branch to .last-sync, commit that marker on main, exit.
-# 4. baseline = read .last-sync or (first run) current HEAD.
+# 4. baseline = read .last-sync if present; if absent -> first run, baseline = fork HEAD.
+#    If .last-sync IS present but its commit is NOT reachable from upstream/main:
+#    warn, reset baseline to fork HEAD (full reconciliation), overwrite .last-sync later on --finalize.
 # 5. changed = git diff --name-status <baseline>..upstream/main.
 # 6. For each changed path: classify (targets.map longest-match; fork-exclude supersedes;
 #    ignore skips; absent pattern -> copy if file exists in baseline, else review).
-#    - translate -> run translate.sh <file> and write translated content
+#    - translate -> run translate.sh <file>; if output is empty or `bash -n` reports a
+#      syntax error, do NOT write it: mark needs-human-review, leave the original in place,
+#      and record it in the report (never delete the original on failure).
 #    - copy -> git checkout upstream/main -- <path>
 #    - review -> copy verbatim + note needs-human-review
 #    - merge -> record placeholder for model; do not copy
