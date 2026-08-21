@@ -11,3 +11,4 @@ supabase/
 dify/
 volumes/
 docker-compose.override.yml
+.worktrees/
