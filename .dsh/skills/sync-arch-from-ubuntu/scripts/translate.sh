@@ -89,6 +89,10 @@ function flush()  { for (i = 0; i < nbuf; i++) print buf[i]; nbuf = 0; }
     # A standalone upgrade right after a guard install (which already emitted a
     # full `-Syu --needed`) is redundant unless a fresh apt update preceded it
     # (covering a repo added after the guard). Suppress the redundant one.
+    # NOTE: `upgraded_once` is never reset; a legitimate later upgrade is only
+    # re-armed by `pending_up_seen` on a fresh `apt update`. This coupling relies
+    # on idioms.map dropping every repo-add line — if a future idiom regression
+    # lets a repo line through, a post-guard upgrade would be silently suppressed.
     if (upgraded_once && !pending_up_seen) { next; }
     emit("pacman -Syu --noconfirm");
     next;
@@ -120,6 +124,9 @@ function flush()  { for (i = 0; i < nbuf; i++) print buf[i]; nbuf = 0; }
       emit("pacman -S --needed --noconfirm " mapped);
     } else {
       # No-prior-update guard: this install needs a full upgrade first.
+      # NOTE: the `pending_up_seen = 0` reset is a no-op here — this branch only
+      # runs when `updated==0`, which guarantees no `apt update` ever fired, so
+      # `pending_up_seen` was already 0. Kept for explicitness.
       pending_up = 0; updated = 1; upgraded_once = 1; pending_up_seen = 0;
       emit("pacman -Syu --needed --noconfirm " mapped);
     }
