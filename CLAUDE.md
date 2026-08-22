@@ -195,3 +195,8 @@ When modifying installer scripts:
 3. Check that `.env` is properly generated
 4. Confirm final report displays correct URLs and credentials
 5. Test update script preserves custom configurations
+
+## Sync with upstream
+This fork tracks upstream kossakovsky/selfhost-ai. To pull and translate Ubuntu changes for
+Arch/CachyOS, use the sync-arch-from-ubuntu skill (see .dsh/skills/sync-arch-from-ubuntu/).
+Semi-automatic: it stages a branch + SYNC_REPORT.md; review before merging, then --finalize.
