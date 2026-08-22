@@ -76,6 +76,34 @@ check "no bare pacman -Sy anywhere (docker)" \
 check "install w/o prior update -> pacman -Syu --needed --noconfirm" \
   bash -c "printf '%s' \"\$0\" | grep -q 'pacman -Syu --needed --noconfirm'" "$out_dock"
 
+# 9. whiptail hint line -> pacman with --needed --noconfirm (no bare pacman -S)
+tmp_hint="$FIX/_tmp_hint.sh"; printf 'sudo apt-get install -y whiptail\n' > "$tmp_hint"
+out_hint="$("$TRANSLATE" "$tmp_hint")"
+check "whiptail hint -> pacman -Syu --needed --noconfirm libnewt" \
+  bash -c "printf '%s' \"\$0\" | grep -q 'pacman -Syu --needed --noconfirm libnewt'" "$out_hint"
+check "no bare pacman -S libnewt (no --needed)" \
+  bash -c "! printf '%s' \"\$0\" | grep -q 'pacman -S libnewt'" "$out_hint"
+
+# 10. multi-package remove -> pacman -R pkg1 pkg2 ...
+tmp_rm="$FIX/_tmp_rm.sh"; printf 'apt remove -y caddy nginx\n' > "$tmp_rm"
+out_rm="$("$TRANSLATE" "$tmp_rm")"
+check "apt remove -y caddy nginx -> pacman -R caddy nginx" \
+  bash -c "printf '%s' \"\$0\" | grep -q 'pacman -R caddy nginx'" "$out_rm"
+
+# 11. standalone apt update (no following upgrade/install) still emits -Syu
+tmp_up="$FIX/_tmp_up.sh"; printf 'apt update\n' > "$tmp_up"
+out_up="$("$TRANSLATE" "$tmp_up")"
+check "standalone apt update -> pacman -Syu --noconfirm" \
+  bash -c "printf '%s' \"\$0\" | grep -q 'pacman -Syu --noconfirm'" "$out_up"
+
+# 12. ordering: install(guard) then upgrade with no update between -> redundant
+#     upgrade suppressed (no duplicate -Syu after a guard install already -Syu'd)
+tmp_ord="$FIX/_tmp_ord.sh"; printf 'apt install -y foo\napt upgrade\n' > "$tmp_ord"
+out_ord="$("$TRANSLATE" "$tmp_ord")"
+check "no redundant -Syu --noconfirm after guard install (no update between)" \
+  bash -c "! printf '%s' \"\$0\" | grep -qE 'pacman -Syu --noconfirm'" "$out_ord"
+rm -f "$tmp_hint" "$tmp_rm" "$tmp_up" "$tmp_ord"
+
 echo
 echo "PASS=$pass FAIL=$fail"
 [ "$fail" -eq 0 ] || exit 1

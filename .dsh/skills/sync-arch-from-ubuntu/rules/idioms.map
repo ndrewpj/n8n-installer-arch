@@ -11,4 +11,3 @@ sources.list.d/docker.list
 dpkg --print-architecture	
 dl.cloudsmith.io/public/caddy/stable/gpg.key	
 dl.cloudsmith.io/public/caddy/stable/debian.deb.txt	
-sudo apt-get install -y whiptail	sudo pacman -S libnewt
