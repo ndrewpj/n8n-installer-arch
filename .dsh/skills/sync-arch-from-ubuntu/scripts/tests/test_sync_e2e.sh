@@ -52,6 +52,8 @@ check "e2e plan: n8n_pipe.py -> preserve" \
   bash -c "printf '%s' \"\$0\" | grep -q -- 'n8n_pipe.py -> preserve'" "$plan"
 check "e2e plan: old_02_install_docker.sh -> preserve" \
   bash -c "printf '%s' \"\$0\" | grep -q -- 'old_02_install_docker.sh -> preserve'" "$plan"
+check "e2e plan: old_start_services copy.py -> preserve" \
+  bash -c "printf '%s' \"\$0\" | grep -q -- 'old_start_services copy.py -> preserve'" "$plan"
 check "e2e plan: certs/ subtree -> preserve" \
   bash -c "printf '%s' \"\$0\" | grep -qE -- 'certs/.*-> preserve'" "$plan"
 
