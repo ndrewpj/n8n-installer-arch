@@ -5,5 +5,6 @@ Baseline: <old hash> -> <new hash>
 ## Copied
 ## Preserved (fork-excluded)
 ## Skipped (ignored)
+## Merge (model-guided review required)
 ## Needs human review
 ## Deleted from upstream

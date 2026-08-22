@@ -23,6 +23,8 @@ for arg in "$@"; do
     *) echo "sync.sh: unknown arg: $arg" >&2; exit 2 ;;
   esac
 done
+[ "$DRY_RUN" -eq 1 ] && [ "$FINALIZE" -eq 1 ] && { \
+  echo "sync.sh: --dry-run and --finalize are mutually exclusive" >&2; exit 2; }
 
 # 1. cd to the fork root (nearest .git ancestor of this script).
 FORK_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
@@ -185,7 +187,7 @@ while IFS=$'\t' read -r status path; do
         || out=""
       if [ -z "$out" ] || ! printf '%s\n' "$out" | bash -n 2>/dev/null; then
         needs_review+=("$path")                                # human review, original kept
-        report="${report}translate-failed: ${path}\n"
+        report+="translate-failed: ${path}"$'\n'
         continue
       fi
       printf '%s\n' "$out" > "$path"
@@ -251,6 +253,8 @@ report_file="$(mktemp)"
   [ "${#preserved_paths[@]}" -gt 0 ] && printf '%s\n' "${preserved_paths[@]}"
   printf '## Skipped (ignored)\n'
   [ "${#ignored_paths[@]}" -gt 0 ] && printf '%s\n' "${ignored_paths[@]}"
+  printf '## Merge (model-guided review required)\n'
+  [ "${#merge_paths[@]}" -gt 0 ] && printf '%s\n' "${merge_paths[@]}"
   printf '## Needs human review\n'
   [ "${#needs_review[@]}" -gt 0 ] && printf '%s\n' "${needs_review[@]}"
   printf '## Deleted from upstream\n'
