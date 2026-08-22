@@ -34,23 +34,27 @@ if ! git remote get-url upstream >/dev/null 2>&1; then
 fi
 git fetch --quiet upstream
 
-# 3. --finalize: write the new baseline after verifying the branch merged.
+# 3. --finalize: write the new baseline on main after verifying the branch merged.
 if [ "$FINALIZE" -eq 1 ]; then
   upstream_main="$(git rev-parse upstream/main)"
-  # Most recently-committed sync/from-upstream-* branch that is merged into HEAD.
+  # Most recently-committed sync/from-upstream-* branch that is merged into MAIN
+  # (not HEAD: a sync branch is an ancestor of itself, so checking HEAD would let
+  # a finalize run while still on the branch trivially pass).
   branch=""
   while IFS= read -r b; do
-    if git merge-base --is-ancestor "$b" HEAD 2>/dev/null; then branch="$b"; break; fi
+    if git merge-base --is-ancestor "$b" main 2>/dev/null; then branch="$b"; break; fi
   done < <(git for-each-ref --format='%(refname:short)' --sort=-committerdate \
            refs/heads/sync/from-upstream-\*)
   if [ -z "$branch" ]; then
-    echo "sync.sh: --finalize: no sync/from-upstream-* branch merged into HEAD" >&2
+    echo "sync.sh: --finalize: no sync/from-upstream-* branch merged into main" >&2
     exit 2
   fi
+  # The marker commit must land on main, never on a sync branch or detached HEAD.
+  git checkout --quiet main
   printf '%s\n%s\n' "$upstream_main" "$branch" > "$LAST_SYNC"
   git add "$LAST_SYNC"
   git commit -q -m "sync: advance baseline to upstream $(printf '%s' "$upstream_main" | cut -c1-12) via $branch"
-  echo "sync.sh: finalized: baseline -> $upstream_main via $branch"
+  echo "sync.sh: finalized on main: baseline -> $upstream_main via $branch"
   exit 0
 fi
 
@@ -144,7 +148,7 @@ classify() {
     echo "${target_action[$best]}"; return 0
   fi
   # absent pattern -> copy if file exists in baseline, else review.
-  if git cat-file -e "HEAD:$path" 2>/dev/null; then echo "copy"; else echo "review"; fi
+  if git cat-file -e "$baseline:$path" 2>/dev/null; then echo "copy"; else echo "review"; fi
 }
 
 # Build the plan. For non-dry-run, perform each action here.
@@ -152,6 +156,10 @@ declare -a plan_rows=()
 declare -a stage_paths=()
 declare -a needs_review=()
 declare -a translated_ok=()
+declare -a copied_paths=()
+declare -a preserved_paths=()
+declare -a ignored_paths=()
+declare -a merge_paths=()
 declare -a deleted_paths=()
 
 report=""
@@ -162,8 +170,9 @@ while IFS=$'\t' read -r status path; do
   plan_rows+=("$status $path -> $action")
 
   case "$action" in
-    preserve|ignore) ;;                                        # nothing
-    merge) report="${report}merge: ${path}\n";;                 # placeholder
+    preserve) preserved_paths+=("$path") ;;                     # fork-excluded: nothing
+    ignore) ignored_paths+=("$path") ;;                        # skipped: nothing
+    merge) merge_paths+=("$path") ;;                           # model placeholder, no copy
     review)
       needs_review+=("$path")
       if [ "$DRY_RUN" -eq 0 ] && git cat-file -e "upstream/main:$path" 2>/dev/null; then
@@ -184,6 +193,7 @@ while IFS=$'\t' read -r status path; do
       stage_paths+=("$path")
       ;;
     copy)
+      copied_paths+=("$path")
       if [ "$DRY_RUN" -eq 0 ] && git cat-file -e "upstream/main:$path" 2>/dev/null; then
         git checkout --quiet upstream/main -- "$path"
       fi
@@ -214,7 +224,7 @@ fi
 # 8. Create branch sync/from-upstream-<YYYYMMDD-HHMM> (suffix -2,-3 if exists).
 stamp="$(date +%Y%m%d-%H%M)"
 branch="sync/from-upstream-$stamp"
-i=1
+i=2
 while git rev-parse --verify "refs/heads/$branch" >/dev/null 2>&1; do
   branch="sync/from-upstream-$stamp-$((i))"
   i=$((i+1))
@@ -223,13 +233,33 @@ git checkout --quiet -b "$branch"
 
 git add "${stage_paths[@]:-}" 2>/dev/null || true
 
-# Generate SYNC_REPORT.md from template (untracked).
+# Generate SYNC_REPORT.md from the template (untracked). Placeholders are
+# filled with the per-file action lists; any line starting with `## ` is kept.
 new_hash="$(git rev-parse upstream/main)"
 old_hash="$baseline"
-report_out="$(printf '# Sync Report — from upstream %s on %s\nBaseline: %s -> %s\n' \
-  "$(printf '%s' "$new_hash" | cut -c1-12)" "$(date)" "$(printf '%s' "$old_hash" | cut -c1-12)" "$(printf '%s' "$new_hash" | cut -c1-12)")"
-printf '%s\n' "$report_out"
-printf '%s' "$report" > SYNC_REPORT.md
+report_file="$(mktemp)"
+{
+  printf '# Sync Report — from upstream %s on %s\n' \
+    "$(printf '%s' "$new_hash" | cut -c1-12)" "$(date)"
+  printf 'Baseline: %s -> %s\n' \
+    "$(printf '%s' "$old_hash" | cut -c1-12)" "$(printf '%s' "$new_hash" | cut -c1-12)"
+  printf '## Translated\n'
+  [ "${#translated_ok[@]}" -gt 0 ] && printf '%s\n' "${translated_ok[@]}"
+  printf '## Copied\n'
+  [ "${#copied_paths[@]}" -gt 0 ] && printf '%s\n' "${copied_paths[@]}"
+  printf '## Preserved (fork-excluded)\n'
+  [ "${#preserved_paths[@]}" -gt 0 ] && printf '%s\n' "${preserved_paths[@]}"
+  printf '## Skipped (ignored)\n'
+  [ "${#ignored_paths[@]}" -gt 0 ] && printf '%s\n' "${ignored_paths[@]}"
+  printf '## Needs human review\n'
+  [ "${#needs_review[@]}" -gt 0 ] && printf '%s\n' "${needs_review[@]}"
+  printf '## Deleted from upstream\n'
+  [ "${#deleted_paths[@]}" -gt 0 ] && printf '%s\n' "${deleted_paths[@]}"
+  [ -n "$report" ] && printf '%s' "$report"
+} > "$report_file"
+mv "$report_file" SYNC_REPORT.md
+printf 'sync.sh: wrote SYNC_REPORT.md (%s translated, %s copied, %s merge, %s review)\n' \
+  "${#translated_ok[@]}" "${#copied_paths[@]}" "${#merge_paths[@]}" "${#needs_review[@]}"
 
 echo
 echo "sync.sh: staged $branch — $(printf '%s\n' "${stage_paths[@]}" | wc -l) files translated/copied;"

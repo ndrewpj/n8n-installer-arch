@@ -44,7 +44,9 @@ mkdir -p "$TMP/scripts" "$TMP/grafana" "$TMP/certs"
 printf 'sudo apt-get install -y nginx\n' > "$TMP/scripts/01_system_preparation.sh"
 printf '# upstream readme\n'             > "$TMP/README.md"
 printf '{"dashboard": 1}\n'              > "$TMP/grafana/dash.json"
-printf 'echo telemetry\n'                > "$TMP/telemetry.sh"
+# ignore.map pins `scripts/telemetry.sh` — a top-level telemetry.sh would NOT be
+# ignored, so write it under scripts/ to genuinely exercise the ignore action.
+printf 'echo telemetry\n'                > "$TMP/scripts/telemetry.sh"
 printf 'fixture secret\n'                > "$TMP/certs/fixture.pem"
 git -C "$TMP" add -A
 git -C "$TMP" commit -qm "upstream fixture"
@@ -78,8 +80,8 @@ check "dry-run prints a copy action (grafana/ longest-match)" \
   bash -c "printf '%s' \"\$0\" | grep -qi 'copy'" "$plan"
 check "dry-run prints a merge action" \
   bash -c "printf '%s' \"\$0\" | grep -qi 'merge'" "$plan"
-check "dry-run prints an ignore action" \
-  bash -c "printf '%s' \"\$0\" | grep -qi 'ignore'" "$plan"
+check "dry-run prints an ignore action (scripts/telemetry.sh)" \
+  bash -c "printf '%s' \"\$0\" | grep -q -- '-> ignore'" "$plan"
 check "dry-run prints a preserve action (fork-exclude supersedes)" \
   bash -c "printf '%s' \"\$0\" | grep -qi 'preserve'" "$plan"
 
