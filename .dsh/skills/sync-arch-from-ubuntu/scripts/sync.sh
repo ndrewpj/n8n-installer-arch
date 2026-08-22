@@ -39,16 +39,20 @@ git fetch --quiet upstream
 # 3. --finalize: write the new baseline on main after verifying the branch merged.
 if [ "$FINALIZE" -eq 1 ]; then
   upstream_main="$(git rev-parse upstream/main)"
-  # Most recently-committed sync/from-upstream-* branch that is merged into MAIN
-  # (not HEAD: a sync branch is an ancestor of itself, so checking HEAD would let
-  # a finalize run while still on the branch trivially pass).
+  # Most recently-committed sync/from-upstream-* branch that is MERGED INTO MAIN
+  # AND actually AHEAD of main (contains new commits). An ancestor check alone is
+  # too weak: a sync branch created from main with only uncommitted changes would
+  # trivially pass, letting finalize skip the changes with a no-op merge.
   branch=""
   while IFS= read -r b; do
-    if git merge-base --is-ancestor "$b" main 2>/dev/null; then branch="$b"; break; fi
+    if git merge-base --is-ancestor "$b" main 2>/dev/null && \
+       [ "$(git rev-list --count main.."$b" 2>/dev/null)" -gt 0 ]; then
+      branch="$b"; break
+    fi
   done < <(git for-each-ref --format='%(refname:short)' --sort=-committerdate \
            refs/heads/sync/from-upstream-\*)
   if [ -z "$branch" ]; then
-    echo "sync.sh: --finalize: no sync/from-upstream-* branch merged into main" >&2
+    echo "sync.sh: --finalize: no sync/from-upstream-* branch merged into main and ahead of it" >&2
     exit 2
   fi
   # The marker commit must land on main, never on a sync branch or detached HEAD.
@@ -179,6 +183,7 @@ while IFS=$'\t' read -r status path; do
       needs_review+=("$path")
       if [ "$DRY_RUN" -eq 0 ] && git cat-file -e "upstream/main:$path" 2>/dev/null; then
         git checkout --quiet upstream/main -- "$path"
+        stage_paths+=("$path")          # copied verbatim; human edits before merge
       fi
       ;;
     translate)
@@ -268,4 +273,5 @@ printf 'sync.sh: wrote SYNC_REPORT.md (%s translated, %s copied, %s merge, %s re
 echo
 echo "sync.sh: staged $branch — $(printf '%s\n' "${stage_paths[@]}" | wc -l) files translated/copied;"
 echo "         needs-human-review: ${#needs_review[@]}; deleted: ${#deleted_paths[@]}"
-echo "         review SYNC_REPORT.md, then git merge '$branch' and run sync.sh --finalize"
+echo "         review SYNC_REPORT.md, git commit -m on '$branch', merge '$branch' into main,"
+echo "         then run sync.sh --finalize (it requires the branch to be merged AND ahead of main)."

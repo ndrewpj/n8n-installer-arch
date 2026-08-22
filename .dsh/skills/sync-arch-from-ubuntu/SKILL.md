@@ -32,3 +32,10 @@ Each path gets exactly one: translate | copy | preserve | ignore | review | merg
 - ignore: drop silently
 - review: copy verbatim + flag needs-human-review
 - merge: model-guided merge, stop for user
+
+## First sync — confirm these with the user
+On the first (full-reconciliation) sync, confirm before acting:
+- docker-compose.yml merge strategy (port new upstream services selectively, never blind-overwrite).
+- dropping `telemetry.sh` / `update_preview.sh` (ignore rows) is acceptable.
+- appending `08_fix_permissions.sh` step 8 into the fork's `install.sh` is wanted.
+- the `review` rows (e.g. import_workflows / generate_welcome_page tooling) are acceptable.

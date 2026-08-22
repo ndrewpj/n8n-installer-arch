@@ -12,7 +12,12 @@ if [ $# -lt 1 ]; then
 fi
 input="$1"
 
-[ -f "$input" ] || { echo "translate.sh: no such file: $input" >&2; exit 2; }
+# Input may be a regular file, `-`/stdin, or a process-substitution fd
+# (/dev/fd/N — a pipe, which -f does not accept). Any readable source works.
+if [ "$input" != "-" ] && [[ "$input" != /dev/fd/* ]] && [ ! -f "$input" ]; then
+  echo "translate.sh: no such input: $input" >&2
+  exit 2
+fi
 for rf in idioms.map packages.map; do
   if [ ! -f "$RULES_DIR/$rf" ]; then
     echo "translate.sh: missing rules file $RULES_DIR/$rf" >&2

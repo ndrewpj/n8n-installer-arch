@@ -104,6 +104,15 @@ check "no redundant -Syu --noconfirm after guard install (no update between)" \
   bash -c "! printf '%s' \"\$0\" | grep -qE 'pacman -Syu --noconfirm'" "$out_ord"
 rm -f "$tmp_hint" "$tmp_rm" "$tmp_up" "$tmp_ord"
 
+# 13. translate.sh must accept a process-substitution fd (/dev/fd/N) and stdin
+#     (`-`), not only a regular file — this is how sync.sh feeds upstream blobs.
+out_fd="$("$TRANSLATE" <(printf 'sudo apt-get install -y whiptail\n'))"
+check "translate accepts process-substitution fd" \
+  bash -c "printf '%s' \"\$0\" | grep -q 'libnewt'" "$out_fd"
+out_stdin="$(printf 'apt install -y python3-pip\n' | "$TRANSLATE" -)"
+check "translate accepts stdin via '-'" \
+  bash -c "printf '%s' \"\$0\" | grep -q 'python-pip'" "$out_stdin"
+
 echo
 echo "PASS=$pass FAIL=$fail"
 [ "$fail" -eq 0 ] || exit 1
