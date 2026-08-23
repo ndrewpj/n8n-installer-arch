@@ -40,19 +40,23 @@ git fetch --quiet upstream
 if [ "$FINALIZE" -eq 1 ]; then
   upstream_main="$(git rev-parse upstream/main)"
   # Most recently-committed sync/from-upstream-* branch that is MERGED INTO MAIN
-  # AND actually AHEAD of main (contains new commits). An ancestor check alone is
-  # too weak: a sync branch created from main with only uncommitted changes would
-  # trivially pass, letting finalize skip the changes with a no-op merge.
+  # (a regular no-ff merge makes the branch an ancestor of main) AND whose tip
+  # still differs from main's tip — i.e. the merge really brought new commits, not
+  # a no-op "Already up to date" fast-forward. The ancestor check alone is too
+  # weak: a sync branch created from main with only uncommitted changes would
+  # trivially pass and finalize would skip the changes. (A squash-merge makes the
+  # branch non-ancestor, so it is not recognized — the documented flow is a
+  # regular merge.)
   branch=""
   while IFS= read -r b; do
     if git merge-base --is-ancestor "$b" main 2>/dev/null && \
-       [ "$(git rev-list --count main.."$b" 2>/dev/null)" -gt 0 ]; then
+       [ "$(git rev-parse "$b")" != "$(git rev-parse main)" ]; then
       branch="$b"; break
     fi
   done < <(git for-each-ref --format='%(refname:short)' --sort=-committerdate \
            refs/heads/sync/from-upstream-\*)
   if [ -z "$branch" ]; then
-    echo "sync.sh: --finalize: no sync/from-upstream-* branch merged into main and ahead of it" >&2
+    echo "sync.sh: --finalize: no sync/from-upstream-* branch merged into main with new commits" >&2
     exit 2
   fi
   # The marker commit must land on main, never on a sync branch or detached HEAD.
