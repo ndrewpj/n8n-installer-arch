@@ -1,73 +1,142 @@
 #!/bin/bash
+# =============================================================================
+# 03_generate_secrets.sh - Secret and configuration generator
+# =============================================================================
+# Generates secure passwords, JWT secrets, API keys, and encryption keys for
+# all services. Creates the .env file from .env.example template.
+#
+# Features:
+#   - Generates cryptographically secure random values (passwords, secrets, keys)
+#   - Creates bcrypt hashes for Caddy basic auth using `caddy hash-password`
+#   - Preserves existing user-provided values in .env on re-run
+#   - Adds variables that are new in .env.example without regenerating existing
+#     ones; the --update flag apply_update.sh passes is accepted but never
+#     parsed, so every run behaves the same way
+#   - Prompts for domain name and Let's Encrypt email
+#
+# Secret types: password (alphanum), secret (base64), hex, api_key, jwt
+#
+# Usage: bash scripts/03_generate_secrets.sh
+# =============================================================================
 
 set -e
 
-# Source the utilities file
+# Source the utilities file and initialize paths
 source "$(dirname "$0")/utils.sh"
+init_paths
+
+# Source telemetry functions
+source "$SCRIPT_DIR/telemetry.sh"
+
+# Setup cleanup for temporary files
+TEMP_FILES=()
+cleanup_temp_files() {
+    for f in "${TEMP_FILES[@]}"; do
+        rm -f "$f" 2>/dev/null
+    done
+}
+trap cleanup_temp_files EXIT
 
 # Check for openssl
-if ! command -v openssl &> /dev/null; then
-    log_error "openssl could not be found. Please ensure it is installed and available in your PATH." >&2
-    exit 1
-fi
+require_command "openssl" "Please ensure openssl is installed and available in your PATH."
 
 # --- Configuration ---
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
 TEMPLATE_FILE="$PROJECT_ROOT/.env.example"
 OUTPUT_FILE="$PROJECT_ROOT/.env"
-DOMAIN_PLACEHOLDER="yourdomain.com"
+
+# Variables that get assigned the user's email address
+EMAIL_VARS=(
+    "COMFYUI_USERNAME"
+    "DASHBOARD_USERNAME"
+    "DOCLING_USERNAME"
+    "INVOKEAI_USERNAME"
+    "LANGFUSE_INIT_USER_EMAIL"
+    "LETSENCRYPT_EMAIL"
+    "LIGHTRAG_USERNAME"
+    "LT_USERNAME"
+    "PADDLEOCR_USERNAME"
+    "PROMETHEUS_USERNAME"
+    "RAGAPP_USERNAME"
+    "SEARXNG_USERNAME"
+    "TEMPORAL_UI_USERNAME"
+    "WAHA_DASHBOARD_USERNAME"
+    "WEAVIATE_USERNAME"
+    "WELCOME_USERNAME"
+    "WHATSAPP_SWAGGER_USERNAME"
+)
+
+# All user input variables (EMAIL_VARS plus non-email vars)
+USER_INPUT_VARS=(
+    "${EMAIL_VARS[@]}"
+    "N8N_WORKER_COUNT"
+    "NEO4J_AUTH_USERNAME"
+    "OPENAI_API_KEY"
+    "RUN_N8N_IMPORT"
+)
 
 # Variables to generate: varName="type:length"
 # Types: password (alphanum), secret (base64), hex, base64, alphanum
 declare -A VARS_TO_GENERATE=(
-    ["FLOWISE_PASSWORD"]="password:32"
-    ["N8N_ENCRYPTION_KEY"]="secret:64" # base64 encoded, 48 bytes -> 64 chars
-    ["N8N_USER_MANAGEMENT_JWT_SECRET"]="secret:64" # base64 encoded, 48 bytes -> 64 chars
-    ["POSTGRES_PASSWORD"]="password:32"
-    ["POSTGRES_NON_ROOT_PASSWORD"]="password:32"
-    ["JWT_SECRET"]="base64:64" # 48 bytes -> 64 chars
-    ["DASHBOARD_PASSWORD"]="password:32" # Supabase Dashboard
+    ["APPSMITH_ENCRYPTION_PASSWORD"]="password:32"
+    ["APPSMITH_ENCRYPTION_SALT"]="password:32"
     ["CLICKHOUSE_PASSWORD"]="password:32"
-    ["MINIO_ROOT_PASSWORD"]="password:32"
-    ["LANGFUSE_SALT"]="secret:64" # base64 encoded, 48 bytes -> 64 chars
-    ["NEXTAUTH_SECRET"]="secret:64" # base64 encoded, 48 bytes -> 64 chars
+    ["COMFYUI_PASSWORD"]="password:32" # Added ComfyUI basic auth password
+    ["CRAWL4AI_API_TOKEN"]="secret:48" # Bearer token; Crawl4AI 0.9+ binds loopback only without it
+    ["DASHBOARD_PASSWORD"]="password:32" # Supabase Dashboard
+    ["DIFY_SECRET_KEY"]="secret:64" # Dify application secret key (maps to SECRET_KEY in Dify)
+    ["DOCLING_PASSWORD"]="password:32"
     ["ENCRYPTION_KEY"]="hex:64" # Langfuse Encryption Key (32 bytes -> 64 hex chars)
+    ["GOST_PASSWORD"]="password:32"
+    ["GOST_USERNAME"]="fixed:gost"
     ["GRAFANA_ADMIN_PASSWORD"]="password:32"
-    # From MD file (ensure they are in template if needed)
-    ["SECRET_KEY_BASE"]="base64:64" # 48 bytes -> 64 chars
-    ["VAULT_ENC_KEY"]="alphanum:32"
-    ["LOGFLARE_PRIVATE_ACCESS_TOKEN"]="fixed:not-in-use" # For supabase-vector, can't be empty
-    ["LOGFLARE_PUBLIC_ACCESS_TOKEN"]="fixed:not-in-use" # For supabase-vector, can't be empty
-    ["PROMETHEUS_PASSWORD"]="password:32" # Added Prometheus password
-    ["SEARXNG_PASSWORD"]="password:32" # Added SearXNG admin password
-    ["LETTA_SERVER_PASSWORD"]="password:32" # Added Letta server password
-    ["LANGFUSE_INIT_USER_PASSWORD"]="password:32"
+    ["INVOKEAI_PASSWORD"]="password:32" # InvokeAI Caddy basic auth password
+    ["JWT_SECRET"]="base64:64" # 48 bytes -> 64 chars
     ["LANGFUSE_INIT_PROJECT_PUBLIC_KEY"]="langfuse_pk:32"
     ["LANGFUSE_INIT_PROJECT_SECRET_KEY"]="langfuse_sk:32"
-    ["WEAVIATE_API_KEY"]="secret:48" # API Key for Weaviate service (36 bytes -> 48 chars base64)
-    ["QDRANT_API_KEY"]="secret:48" # API Key for Qdrant service
+    ["LANGFUSE_INIT_USER_PASSWORD"]="password:32"
+    ["LANGFUSE_SALT"]="secret:64" # base64 encoded, 48 bytes -> 64 chars
+    ["LETTA_SERVER_PASSWORD"]="password:32" # Added Letta server password
+    ["LIGHTRAG_API_KEY"]="secret:48"
+    ["LIGHTRAG_PASSWORD"]="password:32"
+    ["LIGHTRAG_TOKEN_SECRET"]="secret:64" # JWT signing secret (required when AUTH_ACCOUNTS is set)
+    ["LOGFLARE_PRIVATE_ACCESS_TOKEN"]="fixed:not-in-use" # For supabase-vector, can't be empty
+    ["LOGFLARE_PUBLIC_ACCESS_TOKEN"]="fixed:not-in-use" # For supabase-vector, can't be empty
+    ["LT_PASSWORD"]="password:32" # Added LibreTranslate basic auth password
+    ["MINIO_ROOT_PASSWORD"]="password:32"
+    ["N8N_ENCRYPTION_KEY"]="secret:64" # base64 encoded, 48 bytes -> 64 chars
+    ["N8N_MCP_AUTH_TOKEN"]="secret:48" # Bearer token for n8n-MCP (Caddy gate + service auth)
+    ["N8N_RUNNERS_AUTH_TOKEN"]="secret:64" # Task runner auth token for n8n v2.0
+    ["N8N_SANDBOX_API_KEY"]="hex:48" # n8n -> sandbox-api key (SANDBOX_API_KEYS / N8N_SANDBOX_SERVICE_API_KEY)
+    ["N8N_SANDBOX_RUNNER_API_KEY"]="hex:48" # sandbox-api -> runner key (SANDBOX_API_RUNNER_API_KEY / SANDBOX_RUNNER_API_KEYS)
+    ["N8N_SANDBOX_RUNNER_REGISTRATION_TOKEN"]="hex:48" # runner -> sandbox-api registration token, shared by both sides
+    ["N8N_USER_MANAGEMENT_JWT_SECRET"]="secret:64" # base64 encoded, 48 bytes -> 64 chars
     ["NEO4J_AUTH_PASSWORD"]="password:32" # Added Neo4j password
     ["NEO4J_AUTH_USERNAME"]="fixed:neo4j" # Added Neo4j username
-    # Dify environment variables
-    ["DIFY_SECRET_KEY"]="secret:64" # Dify application secret key (maps to SECRET_KEY in Dify)
-    ["COMFYUI_PASSWORD"]="password:32" # Added ComfyUI basic auth password
-    ["RAGAPP_PASSWORD"]="password:32" # Added RAGApp basic auth password
+    ["NEXTAUTH_SECRET"]="secret:64" # base64 encoded, 48 bytes -> 64 chars
+    ["NOCODB_JWT_SECRET"]="secret:64" # NocoDB authentication JWT secret
+    ["OLLAMA_CADDY_API_TOKEN"]="secret:48" # Bearer token for exposing Ollama API via Caddy
+    ["OPEN_TERMINAL_API_KEY"]="hex:48" # Open WebUI -> open-terminal bearer key (entered in Admin Settings)
     ["PADDLEOCR_PASSWORD"]="password:32" # Added PaddleOCR basic auth password
-    ["LT_PASSWORD"]="password:32" # Added LibreTranslate basic auth password
-    # WAHA (WhatsApp HTTP API)
-    ["WAHA_DASHBOARD_PASSWORD"]="password:32"
-    ["WHATSAPP_SWAGGER_PASSWORD"]="password:32"
-    # RAGFlow internal credentials
-    ["RAGFLOW_MYSQL_ROOT_PASSWORD"]="password:32"
-    ["RAGFLOW_MINIO_ROOT_PASSWORD"]="password:32"
-    ["RAGFLOW_REDIS_PASSWORD"]="password:32"
+    ["PG_META_CRYPTO_KEY"]="alphanum:32"
+    ["POSTGRES_NON_ROOT_PASSWORD"]="password:32"
+    ["POSTGRES_PASSWORD"]="password:32"
+    ["PROMETHEUS_PASSWORD"]="password:32" # Added Prometheus password
+    ["QDRANT_API_KEY"]="secret:48" # API Key for Qdrant service
+    ["RAGAPP_PASSWORD"]="password:32" # Added RAGApp basic auth password
     ["RAGFLOW_ELASTICSEARCH_PASSWORD"]="password:32"
-    # LightRAG credentials
-    ["LIGHTRAG_PASSWORD"]="password:32"
-    ["LIGHTRAG_API_KEY"]="secret:48"
-    # Docling credentials
-    ["DOCLING_PASSWORD"]="password:32"
+    ["RAGFLOW_MINIO_ROOT_PASSWORD"]="password:32"
+    ["RAGFLOW_MYSQL_ROOT_PASSWORD"]="password:32"
+    ["RAGFLOW_REDIS_PASSWORD"]="password:32"
+    ["S3_PROTOCOL_ACCESS_KEY_ID"]="hex:32"
+    ["S3_PROTOCOL_ACCESS_KEY_SECRET"]="hex:64"
+    ["SEARXNG_PASSWORD"]="password:32" # Added SearXNG admin password
+    ["SECRET_KEY_BASE"]="base64:64" # 48 bytes -> 64 chars
+    ["TEMPORAL_UI_PASSWORD"]="password:32" # Temporal UI basic auth password
+    ["VAULT_ENC_KEY"]="alphanum:32"
+    ["WAHA_DASHBOARD_PASSWORD"]="password:32"
+    ["WEAVIATE_API_KEY"]="secret:48" # API Key for Weaviate service (36 bytes -> 48 chars base64)
+    ["WELCOME_PASSWORD"]="password:32" # Welcome page basic auth password
+    ["WHATSAPP_SWAGGER_PASSWORD"]="password:32"
 )
 
 # Initialize existing_env_vars and attempt to read .env if it exists
@@ -79,6 +148,8 @@ if [ -f "$OUTPUT_FILE" ]; then
     log_info "Found existing $OUTPUT_FILE. Reading its values to use as defaults and preserve current settings."
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ -n "$line" && ! "$line" =~ ^\s*# && "$line" == *"="* ]]; then
+            # load_env sources .env, so "export FOO=bar" lines are valid - keep them
+            line="${line#export }"
             varName=$(echo "$line" | cut -d'=' -f1 | xargs)
             varValue=$(echo "$line" | cut -d'=' -f2-)
             # Repeatedly unquote "value" or 'value' to get the bare value
@@ -101,23 +172,32 @@ if [ -f "$OUTPUT_FILE" ]; then
 fi
 
 # Install Caddy
-#curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-#curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
-#apt install -y caddy
-pacman -Sy --noconfirm caddy
-# Check for caddy
-if ! command -v caddy &> /dev/null; then
-    log_error "caddy could not be found. Please ensure it is installed and available in your PATH." >&2
-    exit 1
+log_subheader "Installing Caddy"
+detect_distro
+log_info "Detected distribution: ${DISTRO_ID} (package family: ${PKG_FAMILY})"
+if [ "$PKG_FAMILY" = "arch" ]; then
+    # Caddy is packaged in the Arch / CachyOS repositories: no third-party repo.
+    log_info "Installing Caddy from the distribution repositories..."
+    pkg_install caddy || { log_error "Failed to install Caddy."; exit 1; }
+else
+    log_info "Adding Caddy repository and installing..."
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+    apt install -y caddy
 fi
 
+# Check for caddy
+require_command "caddy" "Caddy installation failed. Please check the installation logs above."
+
 require_whiptail
+
 # Prompt for the domain name
+log_subheader "Domain Configuration"
 DOMAIN="" # Initialize DOMAIN variable
 
 # Try to get domain from existing .env file first
 # Check if USER_DOMAIN_NAME is set in existing_env_vars and is not empty
-if [[ -v existing_env_vars[USER_DOMAIN_NAME] && -n "${existing_env_vars[USER_DOMAIN_NAME]}" ]]; then
+if [[ ${existing_env_vars[USER_DOMAIN_NAME]+_} && -n "${existing_env_vars[USER_DOMAIN_NAME]}" ]]; then
     DOMAIN="${existing_env_vars[USER_DOMAIN_NAME]}"
     # Ensure this value is carried over to generated_values for writing and template processing
     # If it came from existing_env_vars, it might already be there, but this ensures it.
@@ -148,6 +228,7 @@ else
 fi
 
 # Prompt for user email
+log_subheader "Email Configuration"
 if [[ -z "${existing_env_vars[LETSENCRYPT_EMAIL]}" ]]; then
     wt_msg "Email Required" "Please enter your email address. It will be used for logins and Let's Encrypt SSL."
 fi
@@ -176,39 +257,16 @@ fi
 
 
 
+log_subheader "Secret Generation"
 log_info "Generating secrets and creating .env file..."
 
 # --- Helper Functions ---
-# Usage: gen_random <length> <characters>
-gen_random() {
-    local length="$1"
-    local characters="$2"
-    head /dev/urandom | tr -dc "$characters" | head -c "$length"
-}
-
-# Usage: gen_password <length>
-gen_password() {
-    gen_random "$1" 'A-Za-z0-9'
-}
-
-# Usage: gen_hex <length> (length = number of hex characters)
-gen_hex() {
-    local length="$1"
-    local bytes=$(( (length + 1) / 2 )) # Calculate bytes needed
-    openssl rand -hex "$bytes" | head -c "$length"
-}
-
-# Usage: gen_base64 <length> (length = number of base64 characters)
-gen_base64() {
-    local length="$1"
-    # Estimate bytes needed: base64 encodes 3 bytes to 4 chars.
-    # So, we need length * 3 / 4 bytes. Use ceil division.
-    local bytes=$(( (length * 3 + 3) / 4 ))
-    openssl rand -base64 "$bytes" | head -c "$length" # Truncate just in case
-}
+# Note: gen_random, gen_password, gen_hex, gen_base64 are now in utils.sh
 
 # Function to update or add a variable to the .env file
 # Usage: _update_or_add_env_var "VAR_NAME" "var_value"
+# An empty var_value removes the line from .env entirely (the preserve block
+# above relies on running before calls that do this).
 _update_or_add_env_var() {
     local var_name="$1"
     local var_value="$2"
@@ -225,32 +283,24 @@ _update_or_add_env_var() {
     fi
 
     if [[ -n "$var_value" ]]; then
-        echo "${var_name}='$var_value'" >> "$tmp_env_file"
+        # Use single quotes for values containing $ (like bcrypt hashes) to prevent variable expansion
+        # Use double quotes for everything else
+        if [[ "$var_value" == *'$'* ]]; then
+            echo "${var_name}='$var_value'" >> "$tmp_env_file"
+        else
+            echo "${var_name}=\"$var_value\"" >> "$tmp_env_file"
+        fi
     fi
     mv "$tmp_env_file" "$OUTPUT_FILE"
     # trap - EXIT # Remove specific trap for this temp file if desired, or let main script's trap handle it.
 }
 
-# Function to generate a hash using Caddy
-# Usage: local HASH=$(_generate_and_get_hash "$plain_password")
-_generate_and_get_hash() {
-    local plain_password="$1"
-    local new_hash=""
-    if [[ -n "$plain_password" ]]; then
-        new_hash=$(caddy hash-password --algorithm bcrypt --plaintext "$plain_password" 2>/dev/null)
-        if [[ $? -ne 0 || -z "$new_hash" ]]; then
-            # Optionally, log a warning here if logging was re-enabled
-            # echo "Warning: Failed to hash password for use with $1 (placeholder)" >&2
-            new_hash="" # Ensure it's empty on failure
-        fi
-    fi
-    echo "$new_hash"
-}
+# Note: generate_bcrypt_hash() is now in utils.sh
 
 # --- Main Logic ---
 
 if [ ! -f "$TEMPLATE_FILE" ]; then
-    log_error "Template file not found at $TEMPLATE_FILE" >&2
+    log_error "Template file not found at $TEMPLATE_FILE"
     exit 1
 fi
 
@@ -262,49 +312,58 @@ for key_from_existing in "${!existing_env_vars[@]}"; do
 done
 
 # Store user input values (potentially overwriting if user was re-prompted and gave new input)
-generated_values["FLOWISE_USERNAME"]="$USER_EMAIL"
-generated_values["DASHBOARD_USERNAME"]="$USER_EMAIL"
-generated_values["LETSENCRYPT_EMAIL"]="$USER_EMAIL"
-generated_values["PROMETHEUS_USERNAME"]="$USER_EMAIL"
-generated_values["SEARXNG_USERNAME"]="$USER_EMAIL"
-generated_values["LANGFUSE_INIT_USER_EMAIL"]="$USER_EMAIL"
-generated_values["WEAVIATE_USERNAME"]="$USER_EMAIL" # Set Weaviate username for Caddy
-generated_values["COMFYUI_USERNAME"]="$USER_EMAIL" # Set ComfyUI username for Caddy
-generated_values["RAGAPP_USERNAME"]="$USER_EMAIL" # Set RAGApp username for Caddy
-generated_values["PADDLEOCR_USERNAME"]="$USER_EMAIL" # Set PaddleOCR username for Caddy
-generated_values["LT_USERNAME"]="$USER_EMAIL" # Set LibreTranslate username for Caddy
-generated_values["LIGHTRAG_USERNAME"]="$USER_EMAIL" # Set LightRAG username for built-in auth
-generated_values["WAHA_DASHBOARD_USERNAME"]="$USER_EMAIL" # WAHA dashboard username default
-generated_values["WHATSAPP_SWAGGER_USERNAME"]="$USER_EMAIL" # WAHA swagger username default
-generated_values["DOCLING_USERNAME"]="$USER_EMAIL" # Set Docling username for Caddy
+# Assign user email to all EMAIL_VARS
+for var in "${EMAIL_VARS[@]}"; do
+    generated_values["$var"]="$USER_EMAIL"
+done
 
+# Database names for backward compatibility
+# New installations: use service-specific databases (postiz, waha, lightrag)
+# Upgrades: use 'postgres' to preserve existing data
+DB_MIGRATION_VARS=("POSTIZ_DB_NAME" "WAHA_DB_NAME" "LIGHTRAG_DB_NAME")
+
+for var in "${DB_MIGRATION_VARS[@]}"; do
+    if [[ -z "${existing_env_vars[$var]}" ]]; then
+        # Variable not in existing .env
+        if [[ ${#existing_env_vars[@]} -gt 0 ]]; then
+            # This is an upgrade - .env exists but var is missing
+            # Use 'postgres' for backward compatibility
+            generated_values["$var"]="postgres"
+        else
+            # New installation - use service name
+            case "$var" in
+                "POSTIZ_DB_NAME")  generated_values["$var"]="postiz" ;;
+                "WAHA_DB_NAME")    generated_values["$var"]="waha" ;;
+                "LIGHTRAG_DB_NAME") generated_values["$var"]="lightrag" ;;
+            esac
+        fi
+    fi
+done
+
+# Open WebUI storage backend - new installations only (issue #105)
+# New installations: the stack's shared PostgreSQL, which handles concurrent
+#   writes and removes the "database is locked" failures SQLite produces.
+# Upgrades: keep SQLite. Open WebUI does not migrate data between backends, so
+#   flipping this on an existing install would present an empty UI while the
+#   old chats stayed in webui.db inside the open-webui volume. Opting in is a
+#   documented manual step - see the README.
+if [[ -z "${existing_env_vars[OPEN_WEBUI_DATABASE]}" ]]; then
+    if [[ ${#existing_env_vars[@]} -gt 0 ]]; then
+        generated_values["OPEN_WEBUI_DATABASE"]="sqlite"
+    else
+        generated_values["OPEN_WEBUI_DATABASE"]="postgres"
+    fi
+fi
 
 # Create a temporary file for processing
 TMP_ENV_FILE=$(mktemp)
-# Ensure temp file is cleaned up on exit
-trap 'rm -f "$TMP_ENV_FILE"' EXIT
+TEMP_FILES+=("$TMP_ENV_FILE")
 
 # Track whether our custom variables were found in the template
 declare -A found_vars
-found_vars["FLOWISE_USERNAME"]=0
-found_vars["DASHBOARD_USERNAME"]=0
-found_vars["LETSENCRYPT_EMAIL"]=0
-found_vars["RUN_N8N_IMPORT"]=0
-found_vars["PROMETHEUS_USERNAME"]=0
-found_vars["SEARXNG_USERNAME"]=0
-found_vars["OPENAI_API_KEY"]=0
-found_vars["LANGFUSE_INIT_USER_EMAIL"]=0
-found_vars["N8N_WORKER_COUNT"]=0
-found_vars["WEAVIATE_USERNAME"]=0
-found_vars["NEO4J_AUTH_USERNAME"]=0
-found_vars["COMFYUI_USERNAME"]=0
-found_vars["RAGAPP_USERNAME"]=0
-found_vars["PADDLEOCR_USERNAME"]=0
-found_vars["DOCLING_USERNAME"]=0
-found_vars["LT_USERNAME"]=0
-found_vars["LIGHTRAG_USERNAME"]=0
-found_vars["WAHA_DASHBOARD_USERNAME"]=0
-found_vars["WHATSAPP_SWAGGER_USERNAME"]=0
+for var in "${USER_INPUT_VARS[@]}"; do
+    found_vars["$var"]=0
+done
 
 # Read template, substitute domain, generate initial values
 while IFS= read -r line || [[ -n "$line" ]]; do
@@ -322,7 +381,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         # Check if this is one of our user-input derived variables that might not have a value yet
         # (e.g. OPENAI_API_KEY if user left it blank). These are handled by `found_vars` later if needed.
         # Or, if variable needs generation AND is not already populated (or is empty) in generated_values
-        elif [[ -v VARS_TO_GENERATE["$varName"] && -z "${generated_values[$varName]}" ]]; then
+        elif [[ ${VARS_TO_GENERATE[$varName]+_} && -z "${generated_values[$varName]}" ]]; then
             IFS=':' read -r type length <<< "${VARS_TO_GENERATE[$varName]}"
             newValue=""
             case "$type" in
@@ -351,13 +410,12 @@ while IFS= read -r line || [[ -n "$line" ]]; do
             # This 'else' block is for lines from template not covered by existing values or VARS_TO_GENERATE.
             # Check if it is one of the user input vars - these are handled by found_vars later if not in template.
             is_user_input_var=0 # Reset for each line
-    user_input_vars=("FLOWISE_USERNAME" "DASHBOARD_USERNAME" "LETSENCRYPT_EMAIL" "RUN_N8N_IMPORT" "PROMETHEUS_USERNAME" "SEARXNG_USERNAME" "OPENAI_API_KEY" "LANGFUSE_INIT_USER_EMAIL" "N8N_WORKER_COUNT" "WEAVIATE_USERNAME" "NEO4J_AUTH_USERNAME" "COMFYUI_USERNAME" "RAGAPP_USERNAME" "PADDLEOCR_USERNAME" "LT_USERNAME" "LIGHTRAG_USERNAME" "WAHA_DASHBOARD_USERNAME" "WHATSAPP_SWAGGER_USERNAME")
-            for uivar in "${user_input_vars[@]}"; do
+            for uivar in "${USER_INPUT_VARS[@]}"; do
                 if [[ "$varName" == "$uivar" ]]; then
                     is_user_input_var=1
                     # Mark as found if it's in template, value taken from generated_values if already set or blank
                     found_vars["$varName"]=1 
-                    if [[ -v generated_values[$varName] ]]; then # if it was set (even to empty by user)
+                    if [[ ${generated_values[$varName]+_} ]]; then # if it was set (even to empty by user)
                         processed_line="${varName}=\"${generated_values[$varName]}\""
                     else # Not set in generated_values, keep template's default if any, or make it empty
                         if [[ "$currentValue" =~ ^\$\{.*\} || -z "$currentValue" ]]; then # if template is ${VAR} or empty
@@ -372,7 +430,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 
             if [[ $is_user_input_var -eq 0 ]]; then # Not a user input var, not in VARS_TO_GENERATE, not in existing
                 trimmed_value=$(echo "$currentValue" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'//")
-                if [[ -n "$varName" && -n "$trimmed_value" && "$trimmed_value" != "\${INSTANCE_DOMAIN}" && "$trimmed_value" != "\${SUBDOMAIN_WILDCARD_CERT}" && ! "$trimmed_value" =~ ^\\$\\ ]]; then # Check for other placeholders
+                if [[ -n "$varName" && -n "$trimmed_value" && "$trimmed_value" != "\${INSTANCE_DOMAIN}" && "$trimmed_value" != "\${SUBDOMAIN_WILDCARD_CERT}" && ! "$trimmed_value" =~ ^\\$\\{ ]]; then # Check for other placeholders
                     # Only store if not already in generated_values and not a placeholder reference
                     if [[ -z "${generated_values[$varName]}" ]]; then
                         generated_values["$varName"]="$trimmed_value"
@@ -433,8 +491,8 @@ if [[ -z "${generated_values[SERVICE_ROLE_KEY]}" ]]; then
 fi
 
 # Add any custom variables that weren't found in the template
-for var in "FLOWISE_USERNAME" "DASHBOARD_USERNAME" "LETSENCRYPT_EMAIL" "RUN_N8N_IMPORT" "OPENAI_API_KEY" "PROMETHEUS_USERNAME" "SEARXNG_USERNAME" "LANGFUSE_INIT_USER_EMAIL" "N8N_WORKER_COUNT" "WEAVIATE_USERNAME" "NEO4J_AUTH_USERNAME" "COMFYUI_USERNAME" "RAGAPP_USERNAME" "PADDLEOCR_USERNAME" "LT_USERNAME" "LIGHTRAG_USERNAME" "WAHA_DASHBOARD_USERNAME" "WHATSAPP_SWAGGER_USERNAME" "DOCLING_USERNAME"; do
-    if [[ ${found_vars["$var"]} -eq 0 && -v generated_values["$var"] ]]; then
+for var in "${USER_INPUT_VARS[@]}"; do
+    if [[ ${found_vars["$var"]} -eq 0 && ${generated_values[$var]+_} ]]; then
         # Before appending, check if it's already in TMP_ENV_FILE to avoid duplicates
         if ! grep -q -E "^${var}=" "$TMP_ENV_FILE"; then
             echo "${var}=\"${generated_values[$var]}\"" >> "$TMP_ENV_FILE" # Ensure quoting
@@ -515,6 +573,47 @@ for key in "${!generated_values[@]}"; do
     rm -f "$value_file"
 done
 
+# --- Preserve variables not present in the template ---
+# Variables that exist in the current .env but were not written by the template
+# pass above (custom user variables, uncommented opt-ins like SCARF_ANALYTICS,
+# INSTALLATION_ID from telemetry.sh) would otherwise be silently dropped.
+# Variables of services removed from the stack (e.g. HERMES_*) also land here
+# and stay until the user deletes them.
+# Append them under a marked section. The whole .env was regenerated from the
+# template above, so the previous run's section is already gone and repeated
+# updates never duplicate entries. This block must run before the WAHA/GOST/hash
+# blocks below: they intentionally remove some variables (e.g. GOST_PROXY_URL
+# when the gost profile is disabled), and running after them would re-append
+# the removed values.
+preserved_header_written=0
+while IFS= read -r varName; do
+    # Only preserve valid variable names, and say so - silently dropping a
+    # variable is the exact bug this block exists to fix
+    if ! [[ "$varName" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        log_warning "Not preserving .env line with unsupported variable name: '$varName' (re-add it manually if needed)"
+        continue
+    fi
+    if ! grep -q "^${varName}=" "$OUTPUT_FILE"; then
+        if [[ $preserved_header_written -eq 0 ]]; then
+            {
+                echo ""
+                echo "# --- Preserved user variables (not in template) ---"
+                echo "# Note: the installer also re-appends its own managed variables below this line"
+            } >> "$OUTPUT_FILE"
+            preserved_header_written=1
+        fi
+        varValue="${existing_env_vars[$varName]}"
+        # Use single quotes for values containing $ (like bcrypt hashes) to
+        # prevent variable expansion, same as _update_or_add_env_var
+        if [[ "$varValue" == *'$'* ]]; then
+            echo "${varName}='${varValue//\'/\'\\\'\'}'" >> "$OUTPUT_FILE"
+        else
+            echo "${varName}=\"${varValue//\"/\\\"}\"" >> "$OUTPUT_FILE"
+        fi
+        log_info "Preserved variable not present in template: $varName"
+    fi
+done < <(printf '%s\n' "${!existing_env_vars[@]}" | sort)
+
 # --- WAHA API KEY (sha512) --- ensure after .env write/substitutions ---
 # Generate plaintext API key if missing, then compute sha512:HEX and store in WAHA_API_KEY
 if [[ -z "${generated_values[WAHA_API_KEY_PLAIN]}" ]]; then
@@ -532,108 +631,65 @@ fi
 _update_or_add_env_var "WAHA_API_KEY_PLAIN" "${generated_values[WAHA_API_KEY_PLAIN]}"
 _update_or_add_env_var "WAHA_API_KEY" "${generated_values[WAHA_API_KEY]}"
 
-# Hash passwords using caddy with bcrypt
-PROMETHEUS_PLAIN_PASS="${generated_values["PROMETHEUS_PASSWORD"]}"
-SEARXNG_PLAIN_PASS="${generated_values["SEARXNG_PASSWORD"]}"
-
-# --- PROMETHEUS ---
-# Try to get existing hash from memory (populated from .env if it was there)
-FINAL_PROMETHEUS_HASH="${generated_values[PROMETHEUS_PASSWORD_HASH]}"
-
-# If no hash in memory, but we have a plain password, generate a new hash
-if [[ -z "$FINAL_PROMETHEUS_HASH" && -n "$PROMETHEUS_PLAIN_PASS" ]]; then
-    NEW_HASH=$(_generate_and_get_hash "$PROMETHEUS_PLAIN_PASS")
-    if [[ -n "$NEW_HASH" ]]; then
-        FINAL_PROMETHEUS_HASH="$NEW_HASH"
-        generated_values["PROMETHEUS_PASSWORD_HASH"]="$NEW_HASH" # Update memory for consistency
+# Generate GOST_PROXY_URL if gost profile is active
+if is_profile_active "gost"; then
+    if [[ -n "${generated_values[GOST_PASSWORD]}" && -n "${generated_values[GOST_USERNAME]}" ]]; then
+        generated_values["GOST_PROXY_URL"]="http://${generated_values[GOST_USERNAME]}:${generated_values[GOST_PASSWORD]}@gost:8080"
+        _update_or_add_env_var "GOST_PROXY_URL" "${generated_values[GOST_PROXY_URL]}"
     fi
-fi
-# Update the .env file with the final determined hash (could be empty if no plain pass or hash failed)
-_update_or_add_env_var "PROMETHEUS_PASSWORD_HASH" "$FINAL_PROMETHEUS_HASH"
-
-# --- SEARXNG ---
-FINAL_SEARXNG_HASH="${generated_values[SEARXNG_PASSWORD_HASH]}"
-
-if [[ -z "$FINAL_SEARXNG_HASH" && -n "$SEARXNG_PLAIN_PASS" ]]; then
-    NEW_HASH=$(_generate_and_get_hash "$SEARXNG_PLAIN_PASS")
-    if [[ -n "$NEW_HASH" ]]; then
-        FINAL_SEARXNG_HASH="$NEW_HASH"
-        generated_values["SEARXNG_PASSWORD_HASH"]="$NEW_HASH"
-    fi
-fi
-_update_or_add_env_var "SEARXNG_PASSWORD_HASH" "$FINAL_SEARXNG_HASH"
-
-# --- COMFYUI ---
-COMFYUI_PLAIN_PASS="${generated_values["COMFYUI_PASSWORD"]}"
-FINAL_COMFYUI_HASH="${generated_values[COMFYUI_PASSWORD_HASH]}"
-if [[ -z "$FINAL_COMFYUI_HASH" && -n "$COMFYUI_PLAIN_PASS" ]]; then
-    NEW_HASH=$(_generate_and_get_hash "$COMFYUI_PLAIN_PASS")
-    if [[ -n "$NEW_HASH" ]]; then
-        FINAL_COMFYUI_HASH="$NEW_HASH"
-        generated_values["COMFYUI_PASSWORD_HASH"]="$NEW_HASH"
-    fi
-fi
-_update_or_add_env_var "COMFYUI_PASSWORD_HASH" "$FINAL_COMFYUI_HASH"
-
-# --- PADDLEOCR ---
-PADDLEOCR_PLAIN_PASS="${generated_values["PADDLEOCR_PASSWORD"]}"
-FINAL_PADDLEOCR_HASH="${generated_values[PADDLEOCR_PASSWORD_HASH]}"
-if [[ -z "$FINAL_PADDLEOCR_HASH" && -n "$PADDLEOCR_PLAIN_PASS" ]]; then
-    NEW_HASH=$(_generate_and_get_hash "$PADDLEOCR_PLAIN_PASS")
-    if [[ -n "$NEW_HASH" ]]; then
-        FINAL_PADDLEOCR_HASH="$NEW_HASH"
-        generated_values["PADDLEOCR_PASSWORD_HASH"]="$NEW_HASH"
-    fi
-fi
-_update_or_add_env_var "PADDLEOCR_PASSWORD_HASH" "$FINAL_PADDLEOCR_HASH"
-
-# --- RAGAPP ---
-RAGAPP_PLAIN_PASS="${generated_values["RAGAPP_PASSWORD"]}"
-FINAL_RAGAPP_HASH="${generated_values[RAGAPP_PASSWORD_HASH]}"
-if [[ -z "$FINAL_RAGAPP_HASH" && -n "$RAGAPP_PLAIN_PASS" ]]; then
-    NEW_HASH=$(_generate_and_get_hash "$RAGAPP_PLAIN_PASS")
-    if [[ -n "$NEW_HASH" ]]; then
-        FINAL_RAGAPP_HASH="$NEW_HASH"
-        generated_values["RAGAPP_PASSWORD_HASH"]="$NEW_HASH"
-    fi
-fi
-_update_or_add_env_var "RAGAPP_PASSWORD_HASH" "$FINAL_RAGAPP_HASH"
-
-# --- LIBRETRANSLATE ---
-LT_PLAIN_PASS="${generated_values["LT_PASSWORD"]}"
-FINAL_LT_HASH="${generated_values[LT_PASSWORD_HASH]}"
-if [[ -z "$FINAL_LT_HASH" && -n "$LT_PLAIN_PASS" ]]; then
-    NEW_HASH=$(_generate_and_get_hash "$LT_PLAIN_PASS")
-    if [[ -n "$NEW_HASH" ]]; then
-        FINAL_LT_HASH="$NEW_HASH"
-        generated_values["LT_PASSWORD_HASH"]="$NEW_HASH"
-    fi
-fi
-_update_or_add_env_var "LT_PASSWORD_HASH" "$FINAL_LT_HASH"
-
-# --- DOCLING ---
-DOCLING_PLAIN_PASS="${generated_values["DOCLING_PASSWORD"]}"
-FINAL_DOCLING_HASH="${generated_values[DOCLING_PASSWORD_HASH]}"
-if [[ -z "$FINAL_DOCLING_HASH" && -n "$DOCLING_PLAIN_PASS" ]]; then
-    NEW_HASH=$(_generate_and_get_hash "$DOCLING_PLAIN_PASS")
-    if [[ -n "$NEW_HASH" ]]; then
-        FINAL_DOCLING_HASH="$NEW_HASH"
-        generated_values["DOCLING_PASSWORD_HASH"]="$NEW_HASH"
-    fi
-fi
-_update_or_add_env_var "DOCLING_PASSWORD_HASH" "$FINAL_DOCLING_HASH"
-
-if [ $? -eq 0 ]; then # This $? reflects the status of the last mv command from the last _update_or_add_env_var call.
-    # For now, assuming if we reached here and mv was fine, primary operations were okay.
-    echo ".env file generated successfully in the project root ($OUTPUT_FILE)."
 else
-    log_error "Failed to generate .env file." >&2
-    rm -f "$OUTPUT_FILE" # Clean up potentially broken output file
-    exit 1
+    # Clear proxy URL if gost is not active
+    _update_or_add_env_var "GOST_PROXY_URL" ""
 fi
+
+# Update GOST_NO_PROXY from template to ensure all internal services are included
+# This overwrites user's value to guarantee new services added in updates are included
+template_no_proxy=$(grep -E "^GOST_NO_PROXY=" "$TEMPLATE_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"' || echo "")
+if [[ -n "$template_no_proxy" ]]; then
+    _update_or_add_env_var "GOST_NO_PROXY" "$template_no_proxy"
+fi
+
+# Hash passwords using caddy with bcrypt (consolidated loop)
+SERVICES_NEEDING_HASH=("PROMETHEUS" "SEARXNG" "COMFYUI" "PADDLEOCR" "RAGAPP" "LT" "DOCLING" "TEMPORAL_UI" "WELCOME" "INVOKEAI")
+
+for service in "${SERVICES_NEEDING_HASH[@]}"; do
+    password_var="${service}_PASSWORD"
+    hash_var="${service}_PASSWORD_HASH"
+
+    plain_pass="${generated_values[$password_var]}"
+    existing_hash="${generated_values[$hash_var]}"
+
+    # If no hash exists but we have a plain password, generate new hash
+    if [[ -z "$existing_hash" && -n "$plain_pass" ]]; then
+        new_hash=$(generate_bcrypt_hash "$plain_pass")
+        if [[ -n "$new_hash" ]]; then
+            existing_hash="$new_hash"
+            generated_values["$hash_var"]="$new_hash"
+        else
+            # An empty hash would either break Caddy config parsing (username
+            # without hash) or silently lock the service behind a deny-all
+            log_error "Failed to generate bcrypt hash for ${service} - Caddy basic auth would be broken."
+            exit 1
+        fi
+    fi
+
+    _update_or_add_env_var "$hash_var" "$existing_hash"
+done
+
+log_success ".env file generated successfully in the project root ($OUTPUT_FILE)."
+
+# Save installation ID for telemetry correlation
+save_installation_id "$OUTPUT_FILE"
 
 # Uninstall caddy
-#apt remove -y caddy
-pacman -R caddy --noconfirm
+if [ "$PKG_FAMILY" = "arch" ]; then
+    # pacman -Rns also removes the now-unused dependencies.
+    pkg_remove caddy
+else
+    apt remove -y caddy
+fi
+
+# Cleanup any .bak files
+cleanup_bak_files "$PROJECT_ROOT"
 
 exit 0

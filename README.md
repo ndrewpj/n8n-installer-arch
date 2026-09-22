@@ -1,13 +1,40 @@
-# This is n8n installer for Arch-based Linux OS. Tested on CachyOS. Original repo and credits: https://github.com/kossakovsky/n8n-install
-**Known issues:**
-- n8n-import script for importing 300 example workflows is not working (did not figure it out)
-- manual switching to bash as default shell is needed (see below)
+# Selfhost AI — Self-Hosted AI Automation Platform
 
-# n8n Install
+[![GitHub stars](https://img.shields.io/github/stars/kossakovsky/selfhost-ai?style=social)](https://github.com/kossakovsky/selfhost-ai/stargazers)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-ready-blue?logo=docker)](https://www.docker.com/)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04%20LTS-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
+[![n8n](https://img.shields.io/badge/n8n-compatible-orange)](https://n8n.io)
 
-**n8n Install** is an open-source Docker Compose template designed to significantly simplify setting up a comprehensive, self-hosted environment for n8n and Flowise. It bundles essential supporting tools like Open WebUI (as an interface for n8n agents), Supabase (database, vector information storage, authentication), Qdrant (high-performance vector information storage), Langfuse (to observe AI model performance), SearXNG (private metasearch), Grafana/Prometheus (monitoring), Crawl4ai (web crawling), and Caddy (for managed HTTPS). Plus, during setup, you can optionally import over 300 community workflows into your n8n instance!
+**Deploy 30+ AI and automation tools with a single command.** This open-source Docker Compose template creates a complete self-hosted environment with n8n (workflow automation), Flowise (AI agents), Ollama (local LLMs), vector databases (Qdrant, Weaviate), RAG engines, Supabase, monitoring stack, and more — all pre-configured behind Caddy reverse proxy with automatic HTTPS. Plus, optionally import 300+ community workflows during setup!
 
-### Why This Setup?
+## Table of Contents
+
+- [Key Features](#key-features)
+- [Why This Setup?](#why-this-setup)
+- [What's Included](#whats-included)
+- [Installation](#installation)
+- [Quick Start and Usage](#quick-start-and-usage)
+- [Upgrading](#upgrading)
+- [Quick Commands](#quick-commands-makefile)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+## Key Features
+
+- **Private AI Homelab** — Run LLMs locally with Ollama, keep your data on your own servers
+- **ChatGPT Alternative** — Open WebUI provides a familiar chat interface for local AI models
+- **Workflow Automation** — n8n with 400+ integrations, scalable queue-based architecture
+- **AI Agents & RAG** — Flowise, Dify, LangChain, vector databases (Qdrant, Weaviate)
+- **One Command Install** — Interactive wizard, automatic secrets, zero manual configuration
+- **Auto HTTPS** — Caddy reverse proxy with automatic Let's Encrypt certificates
+- **Built-in Monitoring** — Grafana + Prometheus stack included, with an n8n dashboard that tracks workflow executions (outcomes, per-workflow volume, time since last success) and ready-made alert rules for failed or stalled workflows
+- **Production Ready** — Scalable workers, health checks, proper service dependencies
+- **Free & Open Source** — No vendor lock-in, Apache 2.0 license
+
+---
+
+## Why This Setup?
 
 This installer helps you create your own powerful, private AI workshop. Imagine having a suite of tools at your fingertips to:
 
@@ -19,19 +46,25 @@ This installer helps you create your own powerful, private AI workshop. Imagine 
 This setup provides a comprehensive suite of cutting-edge services, all pre-configured to work together. Key advantages include:
 
 - **Rich Toolset:** Get a curated collection of powerful open-source tools for AI development, automation, and monitoring, all in one place.
-- **Scalable n8n Performance:** n8n runs in `queue` mode by default, leveraging Redis for task management and Postgres for data storage. You can dynamically specify the number of n8n workers during installation, allowing for robust parallel processing of your workflows to handle demanding loads.
+- **Scalable n8n Performance:** n8n runs in `queue` mode by default, leveraging Redis for task management and Postgres for data storage. You can dynamically specify the number of n8n workers and task runners during installation, allowing for robust parallel processing of your workflows to handle demanding loads.
 - **Full Control:** All of this is hosted by you, giving you full control over your data, operations, and how resources are allocated.
 
-### What's Included
+## What's Included
 
 
 ✅ **[Caddy](https://caddyserver.com/), [Postgres](https://www.postgresql.org/), and [Redis](https://redis.io/)** - Core services for web proxy, database, and caching, which are always included.
 
 The installer also makes the following powerful open-source tools **available for you to select and deploy** via an interactive wizard during setup:
 
+✅ [**Appsmith**](https://www.appsmith.com/) - An open-source low-code platform for building internal tools, dashboards, and admin panels with a drag-and-drop UI builder.
+
 ✅ [**n8n**](https://n8n.io/) - A low-code platform with over 400 integrations and advanced AI components to automate workflows.
 
-✅ [**ComfyUI**](https://github.com/comfyanonymous/ComfyUI) - A powerful, node-based UI for Stable Diffusion workflows. Build and run image-generation pipelines visually, with support for custom nodes and extensions.
+✅ [**n8n-MCP**](https://github.com/czlonkowski/n8n-mcp) - A Model Context Protocol server that gives AI coding assistants (Claude Code, Cursor, Windsurf, VS Code Copilot) indexed access to every n8n node's documentation, property schemas and thousands of workflow templates - and, once you add an n8n API key, the ability to create and update workflows in your n8n instance straight from your IDE.
+
+✅ [**n8n Assistant sandbox**](https://docs.n8n.io/deploy/host-n8n/configure-n8n/set-up-n8n-assistant) - Code-execution sandbox for n8n's built-in AI Assistant and the Agents preview (n8n's own sandbox service, Docker-in-Docker isolated with Sysbox; internal only, see [below](#n8n-assistant-sandbox-ai-assistant--agents)).
+
+✅ [**ComfyUI**](https://github.com/comfyanonymous/ComfyUI) - A powerful, node-based UI for Stable Diffusion workflows. Build and run image-generation pipelines visually, with support for custom nodes and extensions. Runs on NVIDIA, AMD or CPU (chosen in the wizard).
 
 ✅ [**Crawl4ai**](https://github.com/unclecode/crawl4ai) - A flexible web crawler designed for AI, enabling you to extract data from websites for your projects.
 
@@ -41,9 +74,13 @@ The installer also makes the following powerful open-source tools **available fo
 
 ✅ [**Flowise**](https://flowiseai.com/) - A no-code/low-code AI agent builder that complements n8n perfectly, allowing you to create sophisticated AI applications with ease.
 
+✅ [**Gost**](https://github.com/go-gost/gost) - Versatile HTTP/HTTPS proxy for routing AI service outbound traffic through a central proxy point
+
 ✅ [**Gotenberg**](https://gotenberg.dev/) - A stateless API for converting HTML, Markdown, Word, Excel, and other documents to PDF, PNG, or JPEG. Available only within the Docker network for internal use by n8n workflows and other services.
 
 ✅ [**Grafana**](https://grafana.com/) - An open-source platform for visualizing monitoring data, helping you understand system performance at a glance.
+
+✅ [**InvokeAI**](https://invoke.ai/) - A professional creative engine for Stable Diffusion with a polished web UI, node-based workflow editor, inpainting/outpainting, and a REST API. Choose NVIDIA, AMD, or CPU hardware during install; models and outputs are stored in `./invokeai` on the host.
 
 ✅ [**Langfuse**](https://langfuse.com/) - An open-source platform to help you observe and understand how your AI agents are performing, making it easier to debug and improve them.
 
@@ -55,15 +92,19 @@ The installer also makes the following powerful open-source tools **available fo
 
 ✅ [**Neo4j**](https://neo4j.com/) - A graph database management system that allows you to model, store, and query data as a network of nodes and relationships.
 
-✅ [**Ollama**](https://ollama.com/) - Run Llama 3, Mistral, Gemma, and other large language models locally.
+✅ [**NocoDB**](https://nocodb.com/) - An open source Airtable alternative that turns any database into a smart spreadsheet with a no-code interface for building collaborative apps.
+
+✅ [**Ollama**](https://ollama.com/) - Run Llama 3, Mistral, Gemma, and other large language models locally. Optionally expose its API externally through Caddy under `OLLAMA_HOSTNAME`, protected by a generated Bearer token. On multi-GPU hosts you can run several instances (`OLLAMA_INSTANCE_COUNT`) to dedicate a GPU per model.
 
 ✅ [**Open WebUI**](https://openwebui.com/) - A user-friendly, ChatGPT-like interface to interact privately with your AI models and n8n agents.
+
+✅ [**Open Terminal**](https://docs.openwebui.com/features/open-terminal/) - Execution sandbox for Open WebUI agents: a real Linux shell with a filesystem, package installs, local services and Jupyter, a separate Linux account per user (internal only, see [below](#open-terminal-execution-sandbox-for-open-webui-agents)).
 
 ✅ [**PaddleOCR**](https://www.paddleocr.ai/latest/en/index.html) - A CPU-ready OCR API powered by PaddleX Basic Serving. 
 
 ✅ [**Portainer**](https://www.portainer.io/) - A lightweight, secure web UI to manage your Docker environment (containers, images, volumes, networks) with ease.
 
-✅ [**Postgresus**](https://github.com/RostislavDugin/postgresus) - PostgreSQL monitoring and automated backups with a self-hosted UI.
+✅ [**Databasus**](https://github.com/databasus/databasus) - Database backups & monitoring with a self-hosted UI.
 
 ✅ [**Postiz**](https://postiz.com/) - An open-source social media scheduling and publishing platform.
 
@@ -79,11 +120,13 @@ The installer also makes the following powerful open-source tools **available fo
 
 ✅ [**Supabase**](https://supabase.com/) - An open-source alternative to Firebase, providing database storage, user authentication, and more. It's a popular choice for AI applications.
 
+✅ [**Uptime Kuma**](https://github.com/louislam/uptime-kuma) - Self-hosted uptime monitoring tool with notifications
+
 ✅ [**WAHA**](https://waha.devlike.pro/) - WhatsApp HTTP API (REST API) that you can configure in a click! 3 engines: WEBJS (browser based), NOWEB (websocket nodejs), GOWS (websocket go).
 
 ✅ [**Weaviate**](https://weaviate.io/) - An open-source AI-native vector database with a focus on scalability and ease of use. It can be used for RAG, hybrid search, and more.
 
-### Included Community Workflows
+## Included Community Workflows
 
 Get started quickly with a vast library of pre-built automations (optional import during setup)! This collection includes over 300 workflows covering a wide range of use cases:
 
@@ -106,20 +149,20 @@ Get started quickly with a vast library of pre-built automations (optional impor
 1.  **Domain Name:** You need a registered domain name (e.g., `yourdomain.com`).
 2.  **DNS Configuration:** Before running the installation script, you **must** configure DNS A-record for your domain, pointing to the public IP address of the server where you'll install this system. Replace `yourdomain.com` with your actual domain:
     - **Wildcard Record:** `A *.yourdomain.com` -> `YOUR_SERVER_IP`
-3.  **Server:** Minimum server system requirements: Ubuntu 24.04 LTS, 64-bit.
-    - For running **all available services**: at least **8 GB Memory / 4 CPU Cores / 60 GB Disk Space **.
-    - For a minimal setup with only **n8n and Flowise**: **4 GB Memory / 2 CPU Cores / 30 GB Disk Space**.
+3.  **VPS (Virtual Private Server):** A dedicated VPS with a public IP address is required. Home servers, shared hosting, or localhost setups are not supported.
+    - **Operating System:** Ubuntu 24.04 LTS, 64-bit — or Arch Linux / CachyOS (64-bit). The installer auto-detects the package family from `/etc/os-release` and uses `apt` on Debian/Ubuntu and `pacman` on Arch-based systems.
+    - For a minimal setup with **n8n, Monitoring, Databasus and Portainer**: **4 GB Memory / 2 CPU Cores / 40 GB Disk Space**
+    - For running **all available services**: at least **20 GB Memory / 4 CPU Cores / 60 GB Disk Space**
 
 ### Running the Install
 
 The recommended way to install is using the provided main installation script.
 
 1.  Connect to your server via SSH.
-2.  For Arch-based Linux OS I recommend to switch temporarily to bash instead of fish: https://wiki.cachyos.org/configuration/post_install_setup/#changing-the-default-shell
-3.  Run the following command:
+2.  Run the following command:
 
     ```bash
-    git clone https://github.com/ndrewpj/n8n-install && cd n8n-install && sudo bash ./scripts/install.sh
+    git clone https://github.com/kossakovsky/selfhost-ai && cd selfhost-ai && sudo bash ./scripts/install.sh
     ```
 
 This single command automates the entire setup process, including:
@@ -135,35 +178,49 @@ During the installation, the script will prompt you for:
 2.  Your **email address** (Required, used for service logins like Flowise, Supabase dashboard, Grafana, and for SSL certificate registration with Let's Encrypt).
 3.  An optional **OpenAI API key** (Not required. If provided, it can be used by Supabase AI features and Crawl4ai. Press Enter to skip).
 4.  Whether you want to **import ~300 ready-made n8n community workflows** (y/n, Optional. This can take 20-30 minutes, depending on your server and network speed).
-5.  The **number of n8n workers** you want to run (Required, e.g., 1, 2, 3, 4. This determines how many workflows can be processed in parallel. Defaults to 1 if not specified).
+5.  The **number of n8n workers** you want to run (Required, e.g., 1, 2, 3, 4. This determines how many workflows can be processed in parallel. Each worker automatically gets its own dedicated task runner sidecar for executing Code nodes. Defaults to 1 if not specified).
 6.  A **Service Selection Wizard** will then appear, allowing you to choose which of the available services (like Flowise, Supabase, Qdrant, Open WebUI, etc.) you want to deploy. Core services (Caddy, Postgres, Redis) will be set up to support your selections.
 
 Upon successful completion, the script will display a summary report. This report contains the access URLs and credentials for the deployed services. **Save this information in a safe place!**
 
-## ⚡️ Quick Start and Usage
+### Notes for Arch Linux / CachyOS
 
-After successful installation, revert back to fish default shell from bash: https://wiki.cachyos.org/configuration/post_install_setup/#changing-the-default-shell
+The same `sudo bash ./scripts/install.sh` command works on Arch-based systems; the installer detects the package family from `/etc/os-release` and uses `pacman` instead of `apt`. Differences worth knowing:
 
-Your services are up and running! Here's how to get started:
+- **Package names.** `build-essential` → `base-devel`, `whiptail` → `libnewt`, `python3-dotenv` / `python3-yaml` → `python-dotenv` / `python-yaml`. Docker, Compose, Buildx, Caddy, UFW and Fail2Ban all come from the official repositories — no third-party repo, AUR helper or Go toolchain is needed.
+- **No automatic security updates.** Arch is a rolling release, so `unattended-upgrades` is not used. Run `make update` (which performs `pacman -Syu`) regularly.
+- **Firewall.** UFW rules are persisted through `ufw.service`, which the installer enables.
+- **Fail2Ban.** Arch ships fail2ban with no jail enabled, so the installer writes `/etc/fail2ban/jail.d/sshd.local` with `[sshd] enabled = true`. Your own `jail.local` / `jail.d/*.conf` files are never touched.
+- **Sysbox (n8n Assistant sandbox).** There is no official Arch package, so the installer unpacks the upstream `.deb` payload with `ar` + `bsdtar` and registers `sysbox-runc` in `/etc/docker/daemon.json` with `--no-kernel-check` (Sysbox 0.7.1's kernel matrix predates current Arch kernels), then restarts Docker. If you already manage `daemon.json` yourself, review the added `runtimes` entry.
+- **Kernel.** The n8n sandbox needs a kernel newer than 5.19, which every current Arch/CachyOS kernel satisfies. Sysbox needs `ext4` or `btrfs` under `/var/lib` and Docker's data root.
+
+## Quick Start and Usage
+
+After successful installation, your services are up and running! Here's how to get started:
 
 1.  **Access Your Services:**
     The installation script provided a summary report with all access URLs and credentials. Please refer to that report. The main services will be available at the following addresses (replace `yourdomain.com` with your actual domain):
 
     - **n8n:** `n8n.yourdomain.com` (Log in with the email address you provided during installation and the initial password from the summary report. You may be prompted to change this password on first login.)
-    - **ComfyUI:** `comfyui.yourdomain.com` (Node-based Stable Diffusion UI)
+    - **n8n-MCP:** `n8n-mcp.yourdomain.com` (MCP endpoint at `/mcp`. Every request must send `Authorization: Bearer <N8N_MCP_AUTH_TOKEN>` - the token is on the Welcome Page - so a browser visit returns 401 by design. Connect with `npx -y mcp-remote https://n8n-mcp.yourdomain.com/mcp --header "Authorization: Bearer <token>"`, or keep the token out of your shell history and process list with `--header-file <path>` pointing at a file containing `Authorization: Bearer <token>`. Starts in documentation-only mode; to also manage workflows, create an API key in n8n under Settings -> n8n API, set `N8N_API_KEY` in `.env` and run `make restart`. Note that outside n8n Enterprise an API key has full account access. Optionally set `N8N_MCP_ACCESS_TOKEN` (n8n Settings -> Instance-level MCP -> Connect -> API key; n8n 2.34+) for the tools only n8n's own MCP server provides - see `.env.example`.)
+    - **Appsmith:** `appsmith.yourdomain.com` (Low-code app builder)
+    - **ComfyUI:** `comfyui.yourdomain.com` (Node-based Stable Diffusion UI; the wizard asks for NVIDIA, AMD or CPU. Models and custom nodes persist in the `comfyui_data` volume; on NVIDIA, reserve GPUs with `COMFYUI_GPU_COUNT` or pin them with `COMFYUI_GPU_DEVICES`)
+    - **Databasus:** `databasus.yourdomain.com`
     - **Dify:** `dify.yourdomain.com` (AI application development platform with comprehensive LLMOps capabilities)
     - **Docling:** `docling.yourdomain.com` (Universal document converter with REST API; web UI available at `/ui`)
     - **Flowise:** `flowise.yourdomain.com` (Log in with the email address you provided during installation and the initial password from the summary report.)
     - **Grafana:** `grafana.yourdomain.com`
+    - **InvokeAI:** `invokeai.yourdomain.com` (Stable Diffusion studio; download a model via the Model Manager on first visit)
     - **Langfuse:** `langfuse.yourdomain.com`
-    - **LightRAG:** `lightrag.yourdomain.com`
     - **Letta:** `letta.yourdomain.com`
     - **LibreTranslate:** `translate.yourdomain.com`
+    - **LightRAG:** `lightrag.yourdomain.com`
     - **Neo4j:** `neo4j.yourdomain.com`
+    - **NocoDB:** `nocodb.yourdomain.com`
+    - **Ollama:** `ollama.yourdomain.com` (Optional local-LLM API; every request must send `Authorization: Bearer <OLLAMA_CADDY_API_TOKEN>`. A leaked token grants full control — including pulling/deleting models — not just inference.)
     - **Open WebUI:** `webui.yourdomain.com`
     - **PaddleOCR:** `paddleocr.yourdomain.com`
     - **Portainer:** `portainer.yourdomain.com` (Protected by Caddy basic auth; on first login, complete Portainer admin setup)
-    - **Postgresus:** `postgresus.yourdomain.com`
     - **Postiz:** `postiz.yourdomain.com`
     - **Prometheus:** `prometheus.yourdomain.com` (Typically used as a data source for Grafana)
     - **Qdrant:** `qdrant.yourdomain.com`
@@ -171,6 +228,7 @@ Your services are up and running! Here's how to get started:
     - **RAGFlow:** `ragflow.yourdomain.com`
     - **SearXNG:** `searxng.yourdomain.com`
     - **Supabase (Dashboard):** `supabase.yourdomain.com`
+    - **Uptime Kuma:** `uptime-kuma.yourdomain.com` (Uptime monitoring dashboard)
     - **WAHA:** `waha.yourdomain.com` (WhatsApp HTTP API; engines: WEBJS, NOWEB, GOWS)
     - **Weaviate:** `weaviate.yourdomain.com`
 
@@ -180,6 +238,17 @@ Your services are up and running! Here's how to get started:
 - **How to enable**: Select “Python Runner” in the Service Selection Wizard during install/update, or add the profile manually: `COMPOSE_PROFILES=...,python-runner`.
 - **Where to put code**: Place your Python files in `python-runner/`. The default entry point is `python-runner/main.py`.
 - **Dependencies**: Add them to `python-runner/requirements.txt`; they will be installed automatically on container start.
+
+### Open Terminal: execution sandbox for Open WebUI agents
+
+Open WebUI can search, read and reason, and its built-in code interpreter runs a snippet of Python, but out of the box it cannot keep files around, install a dependency or start a local service. [Open Terminal](https://docs.openwebui.com/features/open-terminal/) closes that loop: a Linux environment the chat drives, with a shell, a persistent home directory, apt/pip/npm installs at runtime, port proxying for local services and Jupyter kernels. Select **Open Terminal** in the wizard (`open-terminal` profile, requires `open-webui`). Nothing is published and there is no URL; Open WebUI talks to `open-terminal:8000` over the internal network.
+
+- **Connect it once**: in Open WebUI open **Admin Settings → Integrations → Open Terminal** and add `http://open-terminal:8000` with the API key from the Welcome Page (`OPEN_TERMINAL_API_KEY` in `.env`). Add it there, not as a tool server, and not in your personal settings: the admin connection keeps the key on the server, a personal one sends it to the browser.
+- **Access is deliberate**: a new connection is visible to admins only. Grant it to users or groups in the same dialog. Everyone you grant gets a shell inside the container (an unprivileged Linux account in multi-user mode, a sudo-capable one with `OPEN_TERMINAL_MULTI_USER=false`), which sits on the same Docker network as Postgres, Ollama, n8n and the rest, so treat it like giving out SSH access.
+- **Multi-user by default**: `OPEN_TERMINAL_MULTI_USER=true` creates a Linux account per Open WebUI user with its own home under the `localai_open_terminal_home` volume. Files and processes are isolated, the network namespace is not: a local service one user starts on a port is reachable through another user's proxy URL. Set it to `false` for a single shared shell.
+- **Size and limits**: the full image (`latest`, or a release tag such as `0.12.5` via `OPEN_TERMINAL_VERSION`) is about 4 GB and is the only variant that supports multi-user and runtime installs; the installer refuses a `slim`/`alpine`/`openshift` variant while multi-user is on. The container is capped at `OPEN_TERMINAL_CPU_LIMIT=2.0` CPUs and `OPEN_TERMINAL_MEMORY_LIMIT=2G`; raise them in `.env` if the agent needs more.
+- **Preinstalled packages**: `OPEN_TERMINAL_PACKAGES`, `OPEN_TERMINAL_PIP_PACKAGES` and `OPEN_TERMINAL_NPM_PACKAGES` are reinstalled on every container start, so long lists slow startup. In multi-user mode they are the only way to add apt packages, because per-user accounts have no `sudo`; the agent can still `pip install --user` and use project-local npm. With multi-user off the shell has `sudo` and installs anything itself.
+- **Egress filtering** (`OPEN_TERMINAL_ALLOWED_DOMAINS`) is not wired into the stack: the image treats an empty value as "block all outbound traffic" and needs `NET_ADMIN`. If you want it, add the variable together with `cap_add: [NET_ADMIN]` to the `open-terminal` service in `docker-compose.override.yml`.
 
 2.  **Explore n8n:**
 
@@ -196,9 +265,10 @@ Your services are up and running! Here's how to get started:
 
 4.  **Check Monitoring (Optional):**
     - Visit Grafana (`grafana.yourdomain.com`) to see dashboards monitoring your system's performance (data sourced from Prometheus).
+    - The **n8n Monitoring** dashboard includes a *Workflow Executions* section, and four alert rules are pre-provisioned: *n8n workflow failed* (non-manual executions only, so testing in the editor does not page), *n8n workflow stalled* (an active workflow with no success for 24 hours), *n8n workflow has no recorded success* (active for 24 hours without ever succeeding since monitoring started) and *n8n metrics target down*. The 24-hour thresholds are global, so workflows that run less than daily will alert; tune them in `grafana/provisioning/alerting/n8n-workflows.yml`. Alerts follow Grafana's default notification policy, whose built-in email contact point delivers nothing without SMTP: create a contact point (Telegram, Slack, Email with `GF_SMTP_*`, ...) under **Alerting → Contact points** and select it in **Alerting → Notification policies**.
 	
 
-## 🔒 Secure Access with Cloudflare Tunnel (Optional)
+## Secure Access with Cloudflare Tunnel (Optional)
 
 Cloudflare Tunnel provides zero-trust access to your services without exposing any ports on your server. All traffic is routed through Cloudflare's secure network, providing DDoS protection and hiding your server's IP address.
 
@@ -214,21 +284,53 @@ Cloudflare Tunnel provides zero-trust access to your services without exposing a
 See the Cloudflare Tunnel guide: [cloudflare-instructions.md](cloudflare-instructions.md)
 
 
-### Using Pre-installed Libraries in n8n's Custom JavaScript
+### Using Libraries in n8n Code Nodes (v2.0+)
 
-This setup pre-installs useful Node.js libraries for use in n8n's Code nodes, allowing you to write custom JavaScript snippets with enhanced capabilities:
+n8n v2.0 uses external task runners to execute JavaScript and Python code in Code nodes. This setup pre-configures the following libraries via `n8n/Dockerfile.runner` and `n8n/n8n-task-runners.json`:
 
+**JavaScript libraries**:
 - **`cheerio`**: For parsing and manipulating HTML/XML (e.g., web scraping).
 - **`axios`**: A promise-based HTTP client for making requests to external APIs.
 - **`moment`**: For parsing, validating, manipulating, and displaying dates/times.
 - **`lodash`**: A utility library for common programming tasks (arrays, objects, strings, etc.).
 
+### Pre-installed System Tools in n8n
+
+The custom n8n Docker image (`n8n/Dockerfile.n8n`) includes the following system-level tools:
+
+- **`ffmpeg`**: A powerful multimedia framework for converting, recording, and streaming audio and video. Use it via the [Execute Command](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.executecommand/) node in n8n workflows for tasks like:
+  - Converting video/audio formats (e.g., MP4 to MP3)
+  - Extracting audio from video files
+  - Resizing or compressing media files
+  - Generating thumbnails from videos
+
+### n8n Assistant sandbox (AI Assistant / Agents)
+
+n8n's built-in AI Assistant and the Agents preview build, edit and debug workflows through conversation, and on a self-hosted instance they need a code-execution sandbox before they do anything (the Instance AI settings page shows `Code sandbox: Not set` until one exists). Select **n8n Assistant sandbox** in the wizard (`n8n-sandbox` profile, requires `n8n`) and the installer adds n8n's own sandbox stack next to n8n: a one-shot certificate job, the `sandbox-api` service and a Docker-in-Docker `sandbox-runner-1`. Nothing is published; n8n talks to `sandbox-api` over the internal network. Budget about 4 GB of extra RAM for it.
+
+After installation, open n8n → **Settings → Instance AI** and add a model API key (Anthropic, OpenAI, OpenRouter or any OpenAI-compatible endpoint). The sandbox and, when the `searxng` profile is active, web search through the bundled SearXNG are already wired in. n8n's docs position this bundled sandbox as the self-hosted option and Daytona as the hosted one; the Agents knowledge base is the only feature that needs Daytona.
+
+**How the runner is isolated.** Docker-in-Docker normally requires a `privileged` container, which is root-equivalent on the host. The installer avoids that by installing [Sysbox](https://github.com/nestybox/sysbox) (`scripts/setup_sysbox.sh`) and running the runner with `runtime: sysbox-runc`. This installer supports Sysbox on Ubuntu 20.04/22.04/24.04 or Debian 11 (amd64/arm64) and, following n8n's sandbox service, requires a kernel newer than 5.19, Docker installed natively (Sysbox does not support the snap), `/var/lib` and Docker's data root on ext4 or btrfs, and a VM or bare-metal host (not an LXC or other system container). The installer also loads the `br_netfilter` module (the sandbox network policy needs it in both isolation modes) and, before installing Sysbox, adds `bip` and `default-address-pools` entries to `/etc/docker/daemon.json` that mirror Docker's current values: the Sysbox package needs them present to install without rewriting Docker's networking or restarting Docker, so running services are not interrupted. If a prerequisite is missing, or your Docker network setup is custom (`-b`/`--bridge`, `--bip`, `--fixed-cidr` or `--default-address-pool` flags; `bridge`, `fixed-cidr`, `fixed-cidr-v6` or `ipv6: true` in `daemon.json`; no `docker0` bridge), the installer asks whether to run the runner **privileged** instead; say No and the profile is dropped. The choice is recorded in `.env` as `N8N_SANDBOX_RUNNER_RUNTIME` / `N8N_SANDBOX_RUNNER_PRIVILEGED`, `make doctor` warns while the runner is privileged, and `make update` retries Sysbox. On a host you configured yourself, install the `sysbox-ce` package by hand ([release 0.7.1](https://github.com/nestybox/sysbox/releases/tag/v0.7.1); its installer registers the runtime, but refuses to run while containers exist unless `daemon.json` already has `bip` and `default-address-pools`, so do it with the stack stopped) and run `make update`.
+
+Notes:
+
+- **Agents preview**: set `N8N_ENABLED_MODULES=instance-ai,agents` in `.env` and `make restart`. Leave it empty otherwise; an unknown module name stops n8n from booting. The Agents knowledge base additionally needs a Daytona sandbox, which this stack does not provide.
+- **Versions**: the three sandbox images are released together and follow `:latest`; set `N8N_SANDBOX_VERSION` in `.env` to pin one release for all of them. The runner downloads the sandbox image (about 330 MB) on first use after each `make update` or `make restart`, so the first assistant request after that takes a little longer.
+- **Certificates** between `sandbox-api` and the runner are generated once into the `localai_n8n_sandbox_tls` volume and do not renew themselves. To regenerate: `docker compose -p localai rm -sf sandbox-certs sandbox-api sandbox-runner-1`, then `docker volume rm localai_n8n_sandbox_tls`, then `make restart`.
+- **Removing Sysbox**: `sudo apt-get purge sysbox-ce && sudo userdel sysbox`; the two `daemon.json` entries and `/etc/modules-load.d/n8n-sandbox.conf` (br_netfilter autoload) are harmless and can stay.
+
 ## Upgrading
 
-To update all components (n8n, Open WebUI, etc.) to their latest versions and incorporate the newest changes from this installer project, use the update script from the project root:
+To update all components (n8n, Open WebUI, etc.) to their latest versions and incorporate the newest changes from this installer project:
 
 ```bash
-sudo bash ./scripts/update.sh
+make update
+```
+
+**For forks**: If you maintain a fork with custom changes and want to merge updates from upstream instead of resetting:
+
+```bash
+make git-pull
 ```
 
 This script will:
@@ -239,15 +341,148 @@ This script will:
 4.  Ask if you want to re-run the n8n workflow import (useful if you skipped this during the initial installation or want to refresh the community workflows).
 5.  Restart all services with the new updates.
 
-## Cleaning up Docker
+### Custom Configuration That Survives Updates
 
-If you need to free up disk space, you can run the Docker cleanup script. This script removes all unused Docker containers, images, and volumes.
+`make update` resets tracked files (like `Caddyfile` and `docker-compose.yml`) to the latest version, so never edit them directly. Instead, use the dedicated extension points — the files you create there are gitignored, so they are preserved across updates:
+
+- **Custom Caddy entries** (e.g. reverse proxy for a service running outside this stack): drop a `site-*.conf` file into `caddy-addon/`. It is imported automatically by the main Caddyfile. See [caddy-addon/README.md](caddy-addon/README.md) for examples.
+- **Docker Compose overrides** (change any service property): create a `docker-compose.override.yml` in the project root. It is picked up automatically with the highest precedence.
+- **Settings**: values you set in `.env` are preserved by the updater (except `GOST_NO_PROXY`, which is regenerated so it always covers newly added services).
+
+### Ollama on multi-GPU hosts
+
+By default the stack runs a single Ollama container. On a machine with several GPUs you can run more, so a large model can stay resident on its own GPU instead of being swapped out whenever another model is used.
+
+Set `OLLAMA_INSTANCE_COUNT` in `.env` (1-8) and run `make update` (or `bash scripts/generate_ollama_instances.sh` followed by `make restart`). Instance 1 stays the familiar `ollama` container; extras are `ollama2`, `ollama3`, and so on.
+
+```env
+OLLAMA_INSTANCE_COUNT=3
+OLLAMA_GPU_DEVICES=0,1     # instance 1 -> GPUs 0 and 1
+OLLAMA2_GPU_DEVICES=2      # instance 2 -> GPU 2
+OLLAMA3_GPU_DEVICES=3      # instance 3 -> GPU 3
+
+OLLAMA2_KEEP_ALIVE=-1      # keep this instance's model resident forever
+OLLAMA3_MAX_LOADED_MODELS=1
+```
+
+The runtime tuning variables — `KEEP_ALIVE`, `NUM_PARALLEL`, `MAX_LOADED_MODELS`, `CONTEXT_LENGTH`, `KV_CACHE_TYPE`, `GPU_OVERHEAD`, `SCHED_SPREAD` — can be set per instance with an `OLLAMA<N>_` prefix, and an unset one falls back to the global value. These take effect on the next `make restart`, with no regeneration needed. (`OLLAMA_GPU_COUNT` has no per-instance form, and `OLLAMA<N>_GPU_DEVICES` does not fall back to the global `OLLAMA_GPU_DEVICES` — it defaults to GPU N-1.)
+
+Anything beyond those knobs — llama.cpp `LLAMA_ARG_*` variables, ROCm `HSA_OVERRIDE_GFX_VERSION`, and so on — goes into optional env files next to `.env`: `ollama.env` applies to every instance, `ollama<N>.env` to one instance and overrides `ollama.env`. A typical use is a smaller free-VRAM margin on a GPU that serves nothing but one Ollama instance:
+
+```env
+# ollama2.env - this GPU serves only ollama2, so leave less VRAM unused
+LLAMA_ARG_FIT_TARGET=128
+```
+
+The files are gitignored and applied on the next `make restart`. Only llama-server-backed models read `LLAMA_ARG_*`; models running on Ollama's own engine ignore them. Keep the `OLLAMA_*` knobs listed above in `.env` — those values win over the files; any other `OLLAMA_*` variable belongs in the files.
+
+Notes:
+
+- **On NVIDIA, set `OLLAMA_GPU_DEVICES` too.** Extra instances are pinned to explicit GPU IDs, but instance 1 falls back to a count-based reservation and may otherwise land on a GPU already assigned to `ollama2`. `make doctor` warns about this. On AMD, `OLLAMA_GPU_DEVICES` is ignored: extra instances are pinned with `HIP_VISIBLE_DEVICES`, while instance 1 still sees every GPU — pin it yourself in `docker-compose.override.yml` if that matters.
+- **All instances share one model store**, so each model is downloaded only once.
+- **Extra instances are internal only**, reachable at `http://ollama2:11434` from other containers — for example, add it as a second connection in Open WebUI. There are no published ports; if you need external access to a specific instance, add a `caddy-addon/site-*.conf` file.
+- Lowering the count stops and removes the surplus containers on the next `make update`.
+
+### Open WebUI: SQLite or PostgreSQL
+
+Open WebUI stores chats, users and settings in either SQLite (a single file in the `open-webui` volume) or the stack's shared PostgreSQL. SQLite allows only one writer at a time, so with several tabs or devices open you may see:
+
+```
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+```
+
+PostgreSQL handles concurrent writes and puts the data in the same backup as the rest of the stack. Which one you get is controlled by `OPEN_WEBUI_DATABASE` in `.env`:
+
+- **New installations** default to `postgres`.
+- **Existing installations** stay on `sqlite`, deliberately. **Open WebUI does not migrate data between databases** — switching would give you an empty Open WebUI while your chats, users and tags stayed in `webui.db`.
+
+To switch an existing installation:
+
+1. **Back up the volume first** (check the exact name with `docker volume ls | grep open-webui`):
+   ```bash
+   docker run --rm -v localai_open-webui:/data -v "$PWD":/backup alpine \
+     tar czf /backup/open-webui-backup.tar.gz -C /data .
+   ```
+2. Set `OPEN_WEBUI_DATABASE=postgres` in `.env`.
+3. Run `make update` (not just `make restart`) — the `openwebui` database is created by `make install`/`make update`, and pointing Open WebUI at a database that does not exist gives you a container that starts and then fails every request.
+4. Open WebUI comes up **empty**. If you want your old data, migrate it now, **before registering an account** — importing users into a schema that already has an admin can collide on the primary key or the unique email. Use a purpose-built tool: [open-webui-postgres-migration](https://github.com/taylorwilsdon/open-webui-postgres-migration) or [Open-WebUI-SQLite-migration](https://github.com/Digitalist-Open-Cloud/Open-WebUI-SQLite-migration). Prefer these over generic `pgloader`, which does not understand Open WebUI's JSON and blob columns.
+5. Log in with your migrated account. Only register a fresh admin if you deliberately want to start empty.
+
+To revert, set `OPEN_WEBUI_DATABASE=sqlite` and run `make restart` — the original SQLite file is left untouched.
+
+Note that uploaded files and the vector store live in the `open-webui` volume in **either** mode, so moving the database does not make Open WebUI stateless and does not put all of its data into your PostgreSQL backup.
+
+## Security Notes
+
+### Published host ports bypass the firewall
+
+The installer configures `ufw` with `default deny incoming`, but **that does not cover Docker.** Docker publishes container ports in the `nat` table, which is evaluated *before* the `INPUT` chain `ufw` uses — so any port a container publishes on `0.0.0.0` is reachable from the internet regardless of your firewall rules. See [Docker: packet filtering and firewalls](https://docs.docker.com/engine/network/packet-filtering-firewalls/).
+
+By design this stack publishes almost nothing: every service is reached through Caddy on ports 80/443 only. To audit what is actually exposed on your server:
 
 ```bash
-sudo bash ./scripts/docker_cleanup.sh
+docker ps --format '{{.Names}}\t{{.Ports}}'   # the reliable check
+ss -ltnp                                      # host listeners
+```
+
+Trust `docker ps` here: with `"userland-proxy": false` the listener is owned by `dockerd` rather than a `docker-proxy` process, so `ss` output is easy to misread even though the port is published.
+
+Anything showing `0.0.0.0:<port>->` is internet-reachable if your server has a public IP.
+
+- **Supabase API gateway** — bound to `127.0.0.1:8000` by default. Caddy still reaches it over the Docker network, and host-local tooling (`curl http://localhost:8000`) keeps working. To expose it deliberately, set `API_GW_HTTP_PORT` in `.env` (e.g. `API_GW_HTTP_PORT=8000` for all interfaces, or `API_GW_HTTP_PORT=192.168.1.10:8000` for one LAN address) and run `make restart`. `make doctor` warns if the gateway is bound to all interfaces.
+- **Supabase database and pooler** — Supabase's upstream compose still publishes `0.0.0.0:5432` and `0.0.0.0:6543` from its `supavisor` service (container `supabase-pooler`). **If you run the `supabase` profile on a public-IP server, restrict these at your cloud provider's firewall or security group**, which is enforced outside the host and therefore not bypassed by Docker. You can close the pooler port yourself by setting `POOLER_PROXY_PORT_TRANSACTION=127.0.0.1:6543` in **`supabase/docker/.env`** — that is the file Compose interpolates for the Supabase stack, and the variable is only used for the port mapping. Editing the root `.env` has no effect here: the installer copies it to `supabase/docker/.env` once and afterwards only appends keys that are *missing* there, and only `API_GW_HTTP_PORT`/`KONG_HTTP_PORT`/`KONG_HTTPS_PORT` are force-synced. Re-apply your edit after any upstream change that recreates that file. The `5432` mapping cannot be handled the same way: `POSTGRES_PORT` is reused as a bare numeric port throughout Supabase's own connection strings, so it cannot take an address prefix.
+
+## Cleaning up Docker
+
+If you need to free up disk space, you can run the Docker cleanup command. This removes all unused Docker containers, images, and volumes.
+
+```bash
+make clean
 ```
 
 This can be useful for removing old images and freeing up space, but be aware that it will remove all unused data.
+
+## Quick Commands (Makefile)
+
+The project includes a Makefile for simplified command execution:
+
+### Installation & Updates
+
+| Command               | Description                                          |
+| --------------------- | ---------------------------------------------------- |
+| `make install`        | Full installation                                    |
+| `make update`         | Update system and services (resets to origin)        |
+| `make update-preview` | Preview available updates without applying (dry-run) |
+| `make git-pull`       | Update for forks (merges from upstream/main)         |
+| `make clean`          | Remove unused Docker resources                       |
+
+### Monitoring & Logs
+
+| Command                 | Description                                              |
+| ----------------------- | -------------------------------------------------------- |
+| `make logs`             | View logs (all services)                                 |
+| `make logs s=<service>` | View logs for specific service (e.g., `make logs s=n8n`) |
+| `make status`           | Show container status                                    |
+| `make monitor`          | Live CPU/memory monitoring                               |
+| `make restart`          | Restart all services                                     |
+| `make stop`             | Stop all services                                        |
+| `make start`            | Start all services                                       |
+| `make show-restarts`    | Show restart count per container                         |
+| `make import`           | Import n8n workflows from backup                         |
+| `make import n=10`      | Import first N workflows only                            |
+
+### Diagnostics & Configuration
+
+| Command          | Description                                                        |
+| ---------------- | ------------------------------------------------------------------ |
+| `make doctor`    | Run system diagnostics (checks DNS, SSL, containers, disk, memory) |
+| `make setup-tls` | Configure custom TLS certificates for corporate/internal use       |
+
+Run `make help` for the full list of available commands.
+
+## Community Ports
+
+- [n8n-installer-arch](https://github.com/ndrewpj/n8n-installer-arch) by [@ndrewpj](https://github.com/ndrewpj) - Adapted for Arch-based Linux distributions (Arch Linux, CachyOS, Manjaro)
 
 ## Important Links
 
@@ -279,7 +514,19 @@ Here are solutions to common issues you might encounter:
 - **VPN Conflicts:** Using a VPN might interfere with downloading Docker images. If you encounter issues pulling images, try temporarily disabling your VPN.
 - **Server Requirements:** If you experience unexpected issues, ensure your server meets the minimum hardware and operating system requirements (including version) as specified in the "Prerequisites before Installation" section.
 
-## 👓 Recommended Reading
+### Update Script Not Working
+
+- **Symptom:** The `make update` command fails, shows errors, or doesn't apply the latest changes.
+- **Cause:** This can happen if your local repository has diverged from the upstream, has uncommitted changes, or is in an inconsistent state.
+- **Solution:** Run the following command to force-sync your local installation with the latest version:
+
+  ```bash
+  git config pull.rebase true && git fetch origin && git checkout main && git reset --hard "origin/main" && make update
+  ```
+
+  **Warning:** This will discard any local changes you've made to the installer files. If you've customized any scripts or configurations, back them up first.
+
+## Recommended Reading
 
 n8n offers excellent resources for getting started with its AI capabilities:
 
@@ -289,7 +536,7 @@ n8n offers excellent resources for getting started with its AI capabilities:
 - [Demonstration of key differences between agents and chains](https://docs.n8n.io/advanced-ai/examples/agent-chain-comparison/)
 - [What are vector databases?](https://docs.n8n.io/advanced-ai/examples/understand-vector-databases/) (Explains tools like Supabase and Qdrant in more detail)
 
-## 🛍️ More AI Templates
+## More AI Templates
 
 For more AI workflow ideas, visit the [**official n8n AI template gallery**](https://n8n.io/workflows/?categories=AI). From each workflow, select the **Use workflow** button to automatically import it into your n8n instance.
 
@@ -319,10 +566,27 @@ When you build automations in n8n that need to read or write files on your serve
 - [Local File Trigger](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.localfiletrigger/) (To start workflows when files change)
 - [Execute Command](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.executecommand/) (To run command-line tools)
 
-## 🙌 Contributors
+## Contributors
 
-Want to see who has contributed to this project? Check out the [**GitHub Contributors Page**](https://github.com/kossakovsky/n8n-install/graphs/contributors)!
+Want to see who has contributed to this project? Check out the [**GitHub Contributors Page**](https://github.com/kossakovsky/selfhost-ai/graphs/contributors)!
 
-## 📜 License
+## Telemetry
+
+This installer collects anonymous usage statistics via [Scarf](https://scarf.sh) to help improve the project. **No personal data is collected.**
+
+Data collected:
+- Event type (install/update start/complete)
+- Installer version
+- Selected services
+- OS type (e.g., ubuntu-24.04)
+- Random installation ID (to correlate start/complete events)
+- Country (determined by Scarf from IP, not stored by us)
+
+To opt out, add to your `.env` file after installation:
+```
+SCARF_ANALYTICS=false
+```
+
+## License
 
 This project (originally created by the n8n team, with further development by contributors - see "Important Links") is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.

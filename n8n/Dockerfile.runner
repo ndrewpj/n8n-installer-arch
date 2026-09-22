@@ -1,0 +1,15 @@
+FROM n8nio/runners:stable
+
+USER root
+
+# Install npm packages that can be used in Code nodes
+# These must match NODE_FUNCTION_ALLOW_EXTERNAL in n8n-task-runners.json
+# Note: n8nio/runners uses pnpm, not npm
+# TODO(#111): drop the chmod once n8nio/runners ships pnpm with the execute bit
+# (broken since 2026-09-02, pnpm 11.22.0: "/bin/sh: pnpm: Permission denied")
+RUN chmod +x "$(readlink -f /usr/local/bin/pnpm)" && pnpm add cheerio axios moment lodash
+
+# Copy task runner configuration
+COPY n8n-task-runners.json /etc/n8n-task-runners.json
+
+USER runner

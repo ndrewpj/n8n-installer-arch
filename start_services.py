@@ -8,12 +8,11 @@ so they appear together in Docker Desktop.
 """
 
 import os
+import re
 import subprocess
 import shutil
 import time
-import argparse
 import platform
-import sys
 import yaml
 from dotenv import dotenv_values
 
@@ -28,6 +27,48 @@ def is_dify_enabled():
     env_values = dotenv_values(".env")
     compose_profiles = env_values.get("COMPOSE_PROFILES", "")
     return "dify" in compose_profiles.split(',')
+
+def get_gpu_devices_compose_files():
+    """Return GPU pinning override files for services with *_GPU_DEVICES set in .env."""
+    env_values = dotenv_values(".env")
+    profiles = [p.strip() for p in (env_values.get("COMPOSE_PROFILES") or "").split(',')]
+    files = []
+    for var, profile, compose_file in [
+        ("OLLAMA_GPU_DEVICES", "gpu-nvidia", "docker-compose.ollama-gpu-devices.yml"),
+        ("INVOKEAI_GPU_DEVICES", "invokeai-nvidia", "docker-compose.invokeai-gpu-devices.yml"),
+        ("COMFYUI_GPU_DEVICES", "comfyui-nvidia", "docker-compose.comfyui-gpu-devices.yml"),
+    ]:
+        if not env_values.get(var):
+            continue
+        if profile in profiles and os.path.exists(compose_file):
+            files.append(compose_file)
+        else:
+            print(f"Warning: {var} is set but GPU pinning is NOT applied "
+                  f"(requires the {profile} profile and {compose_file}).")
+    return files
+
+def get_open_webui_postgres_compose_files():
+    """Return the Open WebUI PostgreSQL override when OPEN_WEBUI_DATABASE=postgres.
+
+    Without it Open WebUI keeps its SQLite database in the open-webui volume,
+    which is what existing installations stay on (issue #105).
+    """
+    env_values = dotenv_values(".env")
+    # Compose trims whitespace around profile names, so "n8n, open-webui"
+    # really does start open-webui. Strip here or the guard below - and the
+    # error it prints - are both skipped while the service runs on SQLite.
+    profiles = [p.strip() for p in (env_values.get("COMPOSE_PROFILES") or "").split(',')]
+    compose_file = "docker-compose.open-webui-postgres.yml"
+    if env_values.get("OPEN_WEBUI_DATABASE") == "postgres" and "open-webui" in profiles:
+        if os.path.exists(compose_file):
+            return [compose_file]
+        # Never fail silently here: without the override Open WebUI starts on
+        # SQLite and shows an empty interface, which is indistinguishable from
+        # data loss for the user.
+        print(f"ERROR: OPEN_WEBUI_DATABASE=postgres but {compose_file} is missing. "
+              f"Open WebUI will start on SQLite and appear EMPTY. "
+              f"Restore the file or set OPEN_WEBUI_DATABASE=sqlite in .env.")
+    return []
 
 def get_all_profiles(compose_file):
     """Get all profile names from a docker-compose file."""
@@ -69,22 +110,122 @@ def clone_supabase_repo():
     else:
         print("Supabase repository already exists, updating...")
         os.chdir("supabase")
+        # Discard any local postgres image pin so 'git pull' stays conflict-free;
+        # pin_supabase_postgres_image() re-applies it below after the pull.
+        subprocess.run(["git", "checkout", "HEAD", "--", "docker/docker-compose.yml"], check=False)
         run_command(["git", "pull"])
         os.chdir("..")
+    # Keep supabase-db on the Postgres major version matching existing data (issue #64).
+    pin_supabase_postgres_image()
+
+# Pins for supabase/postgres keyed by the data's major version. When Supabase
+# upstream bumps the postgres image to a new MAJOR version, existing data volumes
+# on an older major can no longer be read. Map the on-disk major to a known-good
+# image tag so 'make update' keeps existing databases working instead of silently
+# upgrading them into an unhealthy state.
+SUPABASE_POSTGRES_PINS = {
+    "15": "supabase/postgres:15.8.1.085",
+}
+
+def pin_supabase_postgres_image():
+    """Keep supabase-db on the Postgres major version matching existing data.
+
+    Supabase upstream periodically bumps supabase/postgres to a new major version
+    (e.g. 15 -> 17). PostgreSQL's on-disk format is not compatible across majors,
+    so a silent bump leaves supabase-db unhealthy on an existing data volume.
+    This reads the major version of the data already on disk and, if upstream now
+    wants a different major, pins the image in the freshly pulled compose file back
+    to a compatible tag. Fresh installs (no data yet) are left on upstream.
+    """
+    compose_path = os.path.join("supabase", "docker", "docker-compose.yml")
+    pg_version_path = os.path.join("supabase", "docker", "volumes", "db", "data", "PG_VERSION")
+
+    # No existing data (fresh install) or no compose yet: use upstream as-is.
+    if not (os.path.exists(compose_path) and os.path.exists(pg_version_path)):
+        return
+
+    with open(pg_version_path) as f:
+        data_major = f.read().strip()
+
+    with open(compose_path) as f:
+        content = f.read()
+
+    match = re.search(r"image:\s*supabase/postgres:(\S+)", content)
+    if not match:
+        # Data exists (checked above) but the image line is missing — e.g. an upstream
+        # compose refactor. Don't silently skip the safety pin; warn so the likely
+        # supabase-db breakage is traceable instead of a mysterious unhealthy container.
+        print(
+            f"WARNING: Existing Supabase data is on PG{data_major}, but the "
+            f"supabase/postgres image line was not found in {compose_path}. The version "
+            f"pin could not be applied; supabase-db may start on an incompatible major."
+        )
+        return
+
+    upstream_tag = match.group(1)
+    upstream_major = upstream_tag.split(".")[0]
+
+    # Same major as the data on disk: allow patch-level updates, nothing to pin.
+    if upstream_major == data_major:
+        return
+
+    pin = SUPABASE_POSTGRES_PINS.get(data_major)
+    if not pin:
+        print(
+            f"WARNING: Supabase upstream now uses postgres major {upstream_major}, "
+            f"but your data volume is on major {data_major} and no compatible pin is "
+            f"known. supabase-db may fail to start; a manual data migration is required."
+        )
+        return
+
+    # The regex requires a ':' immediately after "supabase/postgres", so it matches
+    # only the db service's image, not "supabase/postgres-meta" (the meta service).
+    # count=1 is belt-and-suspenders against any future second match.
+    new_content = content.replace(match.group(0), f"image: {pin}", 1)
+    with open(compose_path, "w") as f:
+        f.write(new_content)
+
+    print(
+        f"Pinned Supabase Postgres to {pin} to match your existing PG{data_major} data "
+        f"(upstream moved to {upstream_tag}). 'make update' will not upgrade the major "
+        f"version automatically; a manual migration is required to move to PG{upstream_major}."
+    )
 
 def prepare_supabase_env():
-    """Copy .env to .env in supabase/docker."""
+    """Copy .env to supabase/docker/.env, or sync new variables if it already exists."""
     if not is_supabase_enabled():
         print("Supabase is not enabled, skipping env preparation.")
         return
     env_path = os.path.join("supabase", "docker", ".env")
-    env_example_path = os.path.join(".env")
-    # Do not overwrite existing Supabase env to avoid credential drift
+    root_env_path = ".env"
     if os.path.exists(env_path):
-        print(f"Supabase env already exists at {env_path}, not overwriting.")
+        # Sync new variables from root .env that don't exist in supabase .env
+        print(f"Syncing new variables from root .env to {env_path}...")
+        root_env = dotenv_values(root_env_path)
+        supabase_env = dotenv_values(env_path)
+        new_vars = []
+        for key, value in root_env.items():
+            if key not in supabase_env and value is not None:
+                # Quote values to handle special characters safely
+                if '$' in value:
+                    new_vars.append(f"{key}='{value}'")
+                else:
+                    new_vars.append(f'{key}="{value}"')
+        if new_vars:
+            with open(env_path, 'r') as f:
+                existing_content = f.read()
+            sync_header = "# --- Variables synced from root .env ---"
+            with open(env_path, 'a') as f:
+                if sync_header not in existing_content:
+                    f.write(f"\n{sync_header}\n")
+                for var in new_vars:
+                    f.write(f"{var}\n")
+            print(f"Synced {len(new_vars)} new variable(s) to Supabase env.")
+        else:
+            print("Supabase env is up to date, no new variables to sync.")
         return
     print("Copying .env in root to .env in supabase/docker...")
-    shutil.copyfile(env_example_path, env_path)
+    shutil.copyfile(root_env_path, env_path)
 
 def clone_dify_repo():
     """Clone the Dify repository using sparse checkout if not already present."""
@@ -168,18 +309,88 @@ def prepare_dify_env():
     with open(env_path, 'w') as f:
         f.write("\n".join(lines) + "\n")
 
+def is_postiz_enabled():
+    """Check if 'postiz' is in COMPOSE_PROFILES in .env file."""
+    env_values = dotenv_values(".env")
+    compose_profiles = env_values.get("COMPOSE_PROFILES", "")
+    return "postiz" in compose_profiles.split(',')
+
+def prepare_postiz_env():
+    """Generate postiz.env for mounting as /app/.env in Postiz container.
+
+    The Postiz image uses dotenv-cli (dotenv -e ../../.env) to load config.
+    Always regenerated to reflect current .env values.
+    """
+    if not is_postiz_enabled():
+        print("Postiz is not enabled, skipping env preparation.")
+        return
+
+    print("Generating postiz.env from root .env values...")
+    root_env = dotenv_values(".env")
+
+    hostname = root_env.get("POSTIZ_HOSTNAME", "")
+    frontend_url = f"https://{hostname}" if hostname else ""
+
+    env_vars = {
+        "BACKEND_INTERNAL_URL": "http://localhost:3000",
+        "DATABASE_URL": f"postgresql://postgres:{root_env.get('POSTGRES_PASSWORD', '')}@postgres:5432/{root_env.get('POSTIZ_DB_NAME', 'postiz')}?schema=postiz",
+        "DISABLE_REGISTRATION": root_env.get("POSTIZ_DISABLE_REGISTRATION", "false"),
+        "FRONTEND_URL": frontend_url,
+        "IS_GENERAL": "true",
+        "JWT_SECRET": root_env.get("JWT_SECRET", ""),
+        "MAIN_URL": frontend_url,
+        "NEXT_PUBLIC_BACKEND_URL": f"{frontend_url}/api" if frontend_url else "",
+        "NEXT_PUBLIC_UPLOAD_DIRECTORY": "/uploads",
+        "REDIS_URL": "redis://redis:6379",
+        "STORAGE_PROVIDER": "local",
+        "TEMPORAL_ADDRESS": "temporal:7233",
+        "UPLOAD_DIRECTORY": "/uploads",
+    }
+
+    # Social media API keys — direct pass-through from root .env
+    social_keys = [
+        "X_API_KEY", "X_API_SECRET",
+        "LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET",
+        "REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET",
+        "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET",
+        "BEEHIIVE_API_KEY", "BEEHIIVE_PUBLICATION_ID",
+        "THREADS_APP_ID", "THREADS_APP_SECRET",
+        "FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET",
+        "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET",
+        "TIKTOK_CLIENT_ID", "TIKTOK_CLIENT_SECRET",
+        "PINTEREST_CLIENT_ID", "PINTEREST_CLIENT_SECRET",
+        "DRIBBBLE_CLIENT_ID", "DRIBBBLE_CLIENT_SECRET",
+        "DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET",
+        "DISCORD_BOT_TOKEN_ID",
+        "SLACK_ID", "SLACK_SECRET", "SLACK_SIGNING_SECRET",
+        "MASTODON_URL", "MASTODON_CLIENT_ID", "MASTODON_CLIENT_SECRET",
+    ]
+    for key in social_keys:
+        env_vars[key] = root_env.get(key, "")
+
+    # Handle case where Docker created postiz.env as a directory
+    if os.path.isdir("postiz.env"):
+        print("Warning: postiz.env exists as a directory (likely created by Docker). Removing...")
+        shutil.rmtree("postiz.env")
+
+    with open("postiz.env", 'w') as f:
+        for key, value in env_vars.items():
+            f.write(f'{key}="{value}"\n')
+
+    print(f"Generated postiz.env with {len(env_vars)} variables.")
+
 def stop_existing_containers():
     """Stop and remove existing containers for our unified project ('localai')."""
     print("Stopping and removing existing containers for the unified project 'localai'...")
-    
-    # Base command
-    cmd = ["docker-compose", "-p", "localai"]
+
+    # Base command with project name for consistency
+    cmd = ["docker", "compose", "-p", "localai"]
 
     # Get all profiles from the main docker-compose.yml to ensure all services can be brought down
     all_profiles = get_all_profiles("docker-compose.yml")
     for profile in all_profiles:
         cmd.extend(["--profile", profile])
-    
+
     cmd.extend(["-f", "docker-compose.yml"])
 
     # Check if the Supabase Docker Compose file exists. If so, include it in the 'down' command.
@@ -191,8 +402,28 @@ def stop_existing_containers():
     dify_compose_path = os.path.join("dify", "docker", "docker-compose.yaml")
     if os.path.exists(dify_compose_path):
         cmd.extend(["-f", dify_compose_path])
+        for profile in get_all_profiles(dify_compose_path):
+            cmd.extend(["--profile", profile])
 
-    cmd.append("down")
+    # Check if the n8n workers compose file exists. If so, include it in the 'down' command.
+    n8n_workers_compose_path = "docker-compose.n8n-workers.yml"
+    if os.path.exists(n8n_workers_compose_path):
+        cmd.extend(["-f", n8n_workers_compose_path])
+
+    ollama_instances_compose_path = "docker-compose.ollama-instances.yml"
+    if os.path.exists(ollama_instances_compose_path):
+        cmd.extend(["-f", ollama_instances_compose_path])
+
+    open_webui_pg_compose_path = "docker-compose.open-webui-postgres.yml"
+    if os.path.exists(open_webui_pg_compose_path):
+        cmd.extend(["-f", open_webui_pg_compose_path])
+
+    # Include user overrides if present
+    override_path = "docker-compose.override.yml"
+    if os.path.exists(override_path):
+        cmd.extend(["-f", override_path])
+
+    cmd.extend(["down"])
     run_command(cmd)
 
 def start_supabase():
@@ -202,7 +433,7 @@ def start_supabase():
         return
     print("Starting Supabase services...")
     run_command([
-        "docker-compose", "-p", "localai", "-f", "supabase/docker/docker-compose.yml", "up", "-d"
+        "docker", "compose", "-p", "localai", "-f", "supabase/docker/docker-compose.yml", "up", "-d"
     ])
 
 def start_dify():
@@ -212,21 +443,68 @@ def start_dify():
         return
     print("Starting Dify services...")
     run_command([
-        "docker-compose", "-p", "localai", "-f", "dify/docker/docker-compose.yaml", "up", "-d"
+        "docker", "compose", "-p", "localai",
+        "--profile", "postgresql",
+        "--profile", "weaviate",
+        "-f", "dify/docker/docker-compose.yaml",
+        "up", "-d",
     ])
 
 def start_local_ai():
     """Start the local AI services (using its compose file)."""
     print("Starting local AI services...")
 
+    # Build compose files list
+    compose_files = ["-f", "docker-compose.yml"]
+
+    # Check if n8n workers compose file exists (generated by generate_n8n_workers.sh)
+    n8n_workers_compose_path = "docker-compose.n8n-workers.yml"
+    if os.path.exists(n8n_workers_compose_path):
+        compose_files.extend(["-f", n8n_workers_compose_path])
+
+    # Extra Ollama instances (generated by generate_ollama_instances.sh).
+    # Unlike the GPU pinning overrides this is not gated on a *_GPU_DEVICES
+    # variable, but it does require an Ollama hardware profile, to stay
+    # equivalent to get_ollama_instances_compose() in scripts/utils.sh.
+    ollama_instances_compose_path = "docker-compose.ollama-instances.yml"
+    env_values = dotenv_values(".env")
+    active_profiles = [p.strip() for p in (env_values.get("COMPOSE_PROFILES") or "").split(',')]
+    if any(p in active_profiles for p in ("gpu-nvidia", "gpu-amd", "cpu")):
+        if os.path.exists(ollama_instances_compose_path):
+            compose_files.extend(["-f", ollama_instances_compose_path])
+        else:
+            try:
+                instance_count = int(env_values.get("OLLAMA_INSTANCE_COUNT") or 1)
+            except ValueError:
+                instance_count = 1
+            if instance_count > 1:
+                # Say so: .env promises N instances and exactly one will start.
+                print(f"WARNING: OLLAMA_INSTANCE_COUNT={instance_count} but "
+                      f"{ollama_instances_compose_path} is missing. Only one Ollama "
+                      f"instance will start. Regenerate it with: "
+                      f"bash scripts/generate_ollama_instances.sh")
+
+    # Include GPU pinning overrides when *_GPU_DEVICES is set in .env
+    for gpu_devices_compose_path in get_gpu_devices_compose_files():
+        compose_files.extend(["-f", gpu_devices_compose_path])
+
+    # Include the Open WebUI PostgreSQL override when OPEN_WEBUI_DATABASE=postgres
+    for open_webui_compose_path in get_open_webui_postgres_compose_files():
+        compose_files.extend(["-f", open_webui_compose_path])
+
+    # Include user overrides if present (must be last for highest precedence)
+    override_path = "docker-compose.override.yml"
+    if os.path.exists(override_path):
+        compose_files.extend(["-f", override_path])
+
     # Explicitly build services and pull newer base images first.
     print("Checking for newer base images and building services...")
-    build_cmd = ["docker-compose", "-p", "localai", "-f", "docker-compose.yml", "build", "--pull"]
+    build_cmd = ["docker", "compose", "-p", "localai"] + compose_files + ["build", "--pull"]
     run_command(build_cmd)
 
     # Now, start the services using the newly built images. No --build needed as we just built.
     print("Starting containers...")
-    up_cmd = ["docker-compose", "-p", "localai", "-f", "docker-compose.yml", "up", "-d"]
+    up_cmd = ["docker", "compose", "-p", "localai"] + compose_files + ["up", "-d"]
     run_command(up_cmd)
 
 def generate_searxng_secret_key():
@@ -383,7 +661,10 @@ def main():
     # Generate SearXNG secret key and check docker-compose.yml
     generate_searxng_secret_key()
     check_and_fix_docker_compose_for_searxng()
-    
+
+    # Generate Postiz env file
+    prepare_postiz_env()
+
     stop_existing_containers()
     
     # Start Supabase first
@@ -392,7 +673,7 @@ def main():
         # Give Supabase some time to initialize
         print("Waiting for Supabase to initialize...")
         time.sleep(10)
-    
+
     # Start Dify services
     if is_dify_enabled():
         start_dify()

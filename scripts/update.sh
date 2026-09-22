@@ -1,16 +1,61 @@
 #!/bin/bash
+# =============================================================================
+# update.sh - Main update orchestrator
+# =============================================================================
+# Performs a full system and service update:
+#   1. Backs up user-customizable directories (e.g., python-runner/)
+#   2. Syncs with remote repository (method depends on GIT_MODE)
+#   3. Restores backed up directories to preserve user modifications
+#   4. Updates system packages (apt on Debian/Ubuntu, pacman on Arch/CachyOS)
+#   5. Delegates to apply_update.sh for service updates
+#
+# This two-stage approach ensures apply_update.sh itself gets updated before
+# running, so new update logic is always applied.
+#
+# Git modes (set via GIT_MODE environment variable):
+#   - reset (default): git fetch + reset --hard origin/<branch>
+#     Best for: Standard installations, always syncs cleanly with remote
+#   - merge: git fetch upstream + merge upstream/<branch>
+#     Best for: Forks that maintain their own changes and merge from upstream
+#
+# Preserved directories: Defined in PRESERVE_DIRS array in utils.sh.
+# These directories contain user-customizable content that survives git reset.
+#
+# Usage:
+#   make update      - Standard update (reset mode)
+#   make git-pull    - Fork update (merge mode)
+#   GIT_MODE=merge sudo bash scripts/update.sh  - Manual merge mode
+# =============================================================================
 
 set -e
 
-# Source the utilities file
+# Source the utilities file and initialize paths
 source "$(dirname "$0")/utils.sh"
+init_paths
 
-# Set the compose command explicitly to use docker compose subcommand
+# Source git utilities
+source "$SCRIPT_DIR/git.sh"
 
-# Navigate to the directory where this script is located
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-# Project root directory (one level up from scripts)
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
+# Source telemetry functions
+source "$SCRIPT_DIR/telemetry.sh"
+
+# Setup error telemetry trap for tracking failures
+setup_error_telemetry_trap
+
+# Global variable to track backup path for cleanup
+BACKUP_PATH=""
+
+# Cleanup function for interrupted updates
+cleanup_on_exit() {
+    local exit_code=$?
+    if [ -n "$BACKUP_PATH" ] && [ -d "$BACKUP_PATH" ]; then
+        log_warning "Cleaning up backup directory: $BACKUP_PATH"
+        rm -rf "$BACKUP_PATH"
+    fi
+    exit $exit_code
+}
+trap cleanup_on_exit INT TERM
+
 # Path to the apply_update.sh script
 APPLY_UPDATE_SCRIPT="$SCRIPT_DIR/apply_update.sh"
 
@@ -22,40 +67,81 @@ fi
 
 
 log_info "Starting update process..."
+set_telemetry_stage "git_update"
 
-# Pull the latest repository changes
-log_info "Pulling latest repository changes..."
+# Sync with the latest repository changes
+log_info "Syncing with latest repository changes..."
+
 # Check if git is installed
-if ! command -v git &> /dev/null; then
-    log_warning "'git' command not found. Skipping repository update."
-    # Decide if we should proceed without git pull or exit. Exiting is safer.
-    log_error "Cannot proceed with update without git. Please install git."
+if ! require_git; then
     exit 1
-    # Or, if allowing update without pull:
-    # log_warning "Proceeding without pulling latest changes..."
-else
-    # Change to project root for git pull
-    cd "$PROJECT_ROOT" || { log_error "Failed to change directory to $PROJECT_ROOT"; exit 1; }
-    git reset --hard HEAD || { log_warning "Failed to reset repository. Continuing update with potentially unreset local changes..."; }
-    git pull || { log_warning "Failed to pull latest repository changes. Continuing update with potentially old version of apply_update.sh..."; }
-    # Change back to script dir or ensure apply_update.sh uses absolute paths or cd's itself
-    # (apply_update.sh already handles cd to PROJECT_ROOT, so we're good)
 fi
 
-# Update Ubuntu packages before running apply_update
+# Change to project root for git operations
+cd "$PROJECT_ROOT" || { log_error "Failed to change directory to $PROJECT_ROOT"; exit 1; }
+
+# Repoint remotes still targeting the pre-rename repository URL
+git_heal_renamed_remotes
+
+# Backup user-customizable directories before git reset (uses PRESERVE_DIRS from utils.sh)
+if ! BACKUP_PATH=$(backup_preserved_dirs); then
+    log_error "Backup failed. Aborting update to prevent data loss."
+    exit 1
+fi
+
+if [ -n "$BACKUP_PATH" ]; then
+    log_info "Backup created at: $BACKUP_PATH"
+fi
+
+# Sync with remote repository based on GIT_MODE
+if [[ "${GIT_MODE:-reset}" == "merge" ]]; then
+    # Fork workflow: merge from upstream (preserves local commits)
+    log_info "Using merge mode (for forks)..."
+    if ! git_merge_from_upstream; then
+        restore_preserved_dirs "$BACKUP_PATH"
+        exit 1
+    fi
+else
+    # Standard workflow: reset to origin (discards local commits)
+    if ! git_sync_with_origin; then
+        restore_preserved_dirs "$BACKUP_PATH"
+        exit 1
+    fi
+fi
+
+# Restore user-customizable directories after git reset
+if ! restore_preserved_dirs "$BACKUP_PATH"; then
+    log_error "Failed to restore user directories from backup."
+    log_error "Backup may still be available at: $BACKUP_PATH"
+    BACKUP_PATH=""  # Prevent cleanup from deleting it
+    exit 1
+fi
+
+# Clear backup path after successful restore
+BACKUP_PATH=""
+
+# Update system packages before running apply_update
+set_telemetry_stage "git_system_packages"
 log_info "Updating system packages..."
-pacman -Syu --noconfirm    
-#if command -v apt-get &> /dev/null; then
-#    sudo apt-get update && sudo apt-get upgrade -y
-#    log_info "System packages updated successfully."
-#else
-#    log_warning "'apt-get' not found. Skipping system package update. This is normal on non-debian systems."
-#fi
+detect_distro
+case "$PKG_FAMILY" in
+    debian)
+        sudo apt-get update && sudo apt-get upgrade -y
+        log_info "System packages updated successfully."
+        ;;
+    arch)
+        # Rolling release: a full sync-upgrade is the supported operation.
+        sudo pacman -Syu --noconfirm
+        log_info "System packages updated successfully."
+        ;;
+    *)
+        log_warning "Unsupported package family (distro: ${DISTRO_ID:-unknown}). Skipping system package update."
+        ;;
+esac
+
 
 # Execute the rest of the update process using the (potentially updated) apply_update.sh
+# Note: apply_update.sh has its own error telemetry trap and stages
 bash "$APPLY_UPDATE_SCRIPT"
-
-# The final success message will now come from apply_update.sh
-log_info "Update script finished." # Changed final message
 
 exit 0

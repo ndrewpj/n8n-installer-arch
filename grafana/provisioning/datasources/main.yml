@@ -1,7 +1,18 @@
 apiVersion: 1
 
+# Installations older than 1.10.0 hold a "Prometheus" data source with a random
+# uid. Grafana cannot change the uid of an existing data source (it looks the row
+# up by id AND uid, fails with "data source not found" and refuses to start), so
+# the data source is dropped by name and recreated with the fixed uid on every
+# start. Dashboards and alert rules reference the uid, not the id, so nothing is
+# lost. On a fresh install the delete is a no-op.
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+
 datasources:
   - name: Prometheus
+    uid: Prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090

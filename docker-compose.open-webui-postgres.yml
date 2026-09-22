@@ -1,0 +1,37 @@
+# PostgreSQL storage override for Open WebUI.
+#
+# This file is included automatically by the stack's scripts when
+# OPEN_WEBUI_DATABASE=postgres in .env and the open-webui profile is active.
+# When OPEN_WEBUI_DATABASE=sqlite (the value existing installations keep), this
+# file is not used and Open WebUI keeps its SQLite database in the open-webui
+# volume, exactly as before.
+#
+# Open WebUI does NOT migrate data between backends - switching an existing
+# install gives you an empty Open WebUI while the old chats stay in webui.db
+# inside the open-webui volume. See the README before changing
+# OPEN_WEBUI_DATABASE on a running installation.
+#
+# The 'openwebui' database is created by scripts/databases.sh before any
+# service starts. Open WebUI builds its own schema via Alembic on first boot,
+# so only the database itself has to pre-exist.
+#
+# Plain postgresql:// (not postgresql+psycopg://) is intentional: psycopg v3
+# only entered requirements.txt in v0.10.0, so a '+psycopg' URL is a hard boot
+# failure on any older image - and 'make restart' does not re-pull, so an old
+# local image can outlive several updates. Open WebUI normalises plain
+# postgresql:// to psycopg v3 for its async engine itself (see _make_async_url
+# in backend/open_webui/internal/db.py), so this works on every version.
+#
+# depends_on is required, not cosmetic: Open WebUI's run_migrations() swallows
+# every exception, so an unreachable Postgres at boot produces a running
+# container that 500s on every request instead of a loud failure.
+#
+# Note this moves only the relational data. Uploaded files and the default
+# Chroma vector store stay in the open-webui volume in both modes.
+services:
+  open-webui:
+    environment:
+      DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/openwebui"
+    depends_on:
+      postgres:
+        condition: service_healthy

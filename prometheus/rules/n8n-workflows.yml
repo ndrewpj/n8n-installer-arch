@@ -1,0 +1,21 @@
+# Recording rules behind the "Time Since Last Successful Execution" panel and the
+# "n8n workflow stalled" / "n8n workflow has no recorded success" alerts.
+# Keyed on workflow_id only; the name is joined in at query time from
+# n8n_active_workflow_info, so a rename does not break the history.
+groups:
+  - name: n8n-workflows
+    interval: 1m
+    rules:
+      # Non-manual successful executions per workflow in the last 5 minutes, summed over
+      # all n8n instances. Uses the duration histogram so runs from the editor do not count
+      - record: n8n:workflow_success:increase5m
+        expr: sum by (workflow_id) (increase(n8n_workflow_execution_duration_seconds_count{status="success", mode!="manual"}[5m]))
+
+      # Unix time of each workflow's last non-manual success, reported up to 5 minutes late.
+      # Self-referencing: the value is carried forward for 30 days after the last success and
+      # then dropped, so the workflow disappears from the stalled alert. The state is also
+      # lost if Prometheus is down for more than 1 day
+      - record: n8n:workflow_last_success_timestamp_seconds
+        expr: >-
+          timestamp(n8n:workflow_success:increase5m > 0)
+          or (last_over_time(n8n:workflow_last_success_timestamp_seconds[1d]) > time() - 30 * 86400)

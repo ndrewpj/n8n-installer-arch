@@ -1,4 +1,5 @@
 volumes:
+  appsmith_data:
   caddy-config:
   caddy-data:
   comfyui_data:
@@ -8,88 +9,145 @@ volumes:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
-  langfuse_postgres_data:
+  postgres_data:
+    name: localai_langfuse_postgres_data
   letta_data:
   libretranslate_api_keys:
   libretranslate_models:
   lightrag_data:
   lightrag_inputs:
+  n8n_sandbox_api_data:
+  n8n_sandbox_tls:
   n8n_storage:
+  nocodb_data:
   ollama_storage:
   open-webui:
+  open_terminal_home:
   paddle_cache:
   paddleocr_cache:
   paddlex_data:
   portainer_data:
-  postgresus_data:
+  databasus_data:
   postiz-config:
   postiz-uploads:
   prometheus_data:
   qdrant_storage:
-  ragflow_data:
   ragflow_elasticsearch_data:
   ragflow_minio_data:
   ragflow_mysql_data:
   ragflow_redis_data:
+  temporal_elasticsearch_data:
   valkey-data:
+  uptime_kuma_data:
   weaviate_data:
+
+# Shared logging configuration for services
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "1m"
+    max-file: "1"
+
+# Shared proxy configuration for services that need outbound proxy support
+x-proxy-env: &proxy-env
+  HTTP_PROXY: "${GOST_PROXY_URL:-}"
+  HTTPS_PROXY: "${GOST_PROXY_URL:-}"
+  http_proxy: "${GOST_PROXY_URL:-}"
+  https_proxy: "${GOST_PROXY_URL:-}"
+  NO_PROXY: "${GOST_NO_PROXY:-}"
+  no_proxy: "${GOST_NO_PROXY:-}"
 
 x-n8n: &service-n8n
   build:
     context: ./n8n
+    dockerfile: Dockerfile.n8n
     pull: true
   environment: &service-n8n-env
+    <<: *proxy-env
     DB_POSTGRESDB_DATABASE: postgres
     DB_POSTGRESDB_HOST: postgres
-    DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+    DB_POSTGRESDB_PASSWORD: "${POSTGRES_PASSWORD}"
     DB_POSTGRESDB_USER: postgres
     DB_TYPE: postgresdb
-    EXECUTIONS_MODE: ${EXECUTIONS_MODE:-queue}
-    GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-America/New_York}
-    LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY}
-    LANGCHAIN_ENDPOINT: ${LANGCHAIN_ENDPOINT}
-    LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2}
-    N8N_BINARY_DATA_MODE: filesystem
-    N8N_BLOCK_FILE_ACCESS_TO_N8N_FILES: ${N8N_BLOCK_FILE_ACCESS_TO_N8N_FILES:-true}
+    EXECUTIONS_MODE: "${EXECUTIONS_MODE:-queue}"
+    GENERIC_TIMEZONE: "${GENERIC_TIMEZONE:-America/New_York}"
+    LANGCHAIN_API_KEY: "${LANGCHAIN_API_KEY}"
+    LANGCHAIN_ENDPOINT: "${LANGCHAIN_ENDPOINT}"
+    LANGCHAIN_TRACING_V2: "${LANGCHAIN_TRACING_V2}"
+    N8N_BINARY_DATA_MODE: database
+    N8N_BLOCK_ENV_ACCESS_IN_NODE: false
+    N8N_BLOCK_FILE_ACCESS_TO_N8N_FILES: "${N8N_BLOCK_FILE_ACCESS_TO_N8N_FILES:-true}"
     N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE: true
     N8N_DIAGNOSTICS_ENABLED: false
-    N8N_EMAIL_MODE: ${N8N_EMAIL_MODE:-smtp}
-    N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+    N8N_EMAIL_MODE: "${N8N_EMAIL_MODE:-smtp}"
+    # Empty = n8n defaults (instance-ai is on by default). Set "instance-ai,agents"
+    # for the Agents preview. An unknown module name stops n8n from booting.
+    N8N_ENABLED_MODULES: "${N8N_ENABLED_MODULES:-}"
+    N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY}"
     N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: true
-    N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-info}
-    N8N_LOG_OUTPUT: ${N8N_LOG_OUTPUT:-console}
+    # n8n Assistant sandbox (n8n-sandbox profile). ENABLED is written by
+    # 05_configure_services.sh; the URL and key point at the sandbox-api service.
+    N8N_INSTANCE_AI_SANDBOX_ENABLED: "${N8N_INSTANCE_AI_SANDBOX_ENABLED:-false}"
+    N8N_INSTANCE_AI_SEARXNG_URL: "${N8N_INSTANCE_AI_SEARXNG_URL:-}"
+    N8N_LOG_LEVEL: "${N8N_LOG_LEVEL:-info}"
+    N8N_LOG_OUTPUT: "${N8N_LOG_OUTPUT:-console}"
     N8N_METRICS: true
-    N8N_PAYLOAD_SIZE_MAX: 256
+    N8N_METRICS_INCLUDE_MESSAGE_EVENT_BUS_METRICS: true
+    N8N_METRICS_INCLUDE_WORKFLOW_ID_LABEL: true
+    N8N_METRICS_INCLUDE_WORKFLOW_NAME_LABEL: true
+    N8N_METRICS_INCLUDE_WORKFLOW_INFO: true
+    N8N_PAYLOAD_SIZE_MAX: "${N8N_PAYLOAD_SIZE_MAX:-256}"
     N8N_PERSONALIZATION_ENABLED: false
+    N8N_PROXY_HOPS: "${N8N_PROXY_HOPS:-1}"
+    N8N_RESTRICT_FILE_ACCESS_TO: /data/shared
+    N8N_RUNNERS_AUTH_TOKEN: "${N8N_RUNNERS_AUTH_TOKEN}"
+    N8N_RUNNERS_BROKER_LISTEN_ADDRESS: 0.0.0.0
     N8N_RUNNERS_ENABLED: true
-    N8N_SMTP_HOST: ${N8N_SMTP_HOST:-}
-    N8N_SMTP_OAUTH_PRIVATE_KEY: ${N8N_SMTP_OAUTH_PRIVATE_KEY:-}
-    N8N_SMTP_OAUTH_SERVICE_CLIENT: ${N8N_SMTP_OAUTH_SERVICE_CLIENT:-}
-    N8N_SMTP_PASS: ${N8N_SMTP_PASS:-}
-    N8N_SMTP_PORT: ${N8N_SMTP_PORT:-}
-    N8N_SMTP_SENDER: ${N8N_SMTP_SENDER:-}
-    N8N_SMTP_SSL: ${N8N_SMTP_SSL:-true}
-    N8N_SMTP_STARTTLS: ${N8N_SMTP_STARTTLS:-true}
-    N8N_SMTP_USER: ${N8N_SMTP_USER:-}
-    N8N_TRUST_PROXY: true
-    N8N_USER_MANAGEMENT_JWT_SECRET: ${N8N_USER_MANAGEMENT_JWT_SECRET}
+    N8N_RUNNERS_MODE: external
+    N8N_RUNNERS_TASK_REQUEST_TIMEOUT: "${N8N_RUNNERS_TASK_REQUEST_TIMEOUT:-300}"
+    N8N_SANDBOX_SERVICE_API_KEY: "${N8N_SANDBOX_API_KEY:-}"
+    N8N_SANDBOX_SERVICE_URL: "${N8N_SANDBOX_SERVICE_URL:-http://sandbox-api:8080}"
+    OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "${OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS:-true}"
+    N8N_SMTP_HOST: "${N8N_SMTP_HOST:-}"
+    N8N_SMTP_OAUTH_PRIVATE_KEY: "${N8N_SMTP_OAUTH_PRIVATE_KEY:-}"
+    N8N_SMTP_OAUTH_SERVICE_CLIENT: "${N8N_SMTP_OAUTH_SERVICE_CLIENT:-}"
+    N8N_SMTP_PASS: "${N8N_SMTP_PASS:-}"
+    N8N_SMTP_PORT: "${N8N_SMTP_PORT:-}"
+    N8N_SMTP_SENDER: "${N8N_SMTP_SENDER:-}"
+    N8N_SMTP_SSL: "${N8N_SMTP_SSL:-true}"
+    N8N_SMTP_STARTTLS: "${N8N_SMTP_STARTTLS:-true}"
+    N8N_SMTP_USER: "${N8N_SMTP_USER:-}"
+    N8N_USER_MANAGEMENT_JWT_SECRET: "${N8N_USER_MANAGEMENT_JWT_SECRET}"
     NODE_ENV: production
-    NODE_FUNCTION_ALLOW_BUILTIN: "*"
-    NODE_FUNCTION_ALLOW_EXTERNAL: cheerio,axios,moment,lodash
-    QUEUE_BULL_REDIS_HOST: ${REDIS_HOST:-redis}
-    QUEUE_BULL_REDIS_PORT: ${REDIS_PORT:-6379}
+    NODES_EXCLUDE: "${NODES_EXCLUDE:-[]}"
+    QUEUE_BULL_PREFIX: "${QUEUE_BULL_PREFIX:-n8n}"
+    QUEUE_BULL_REDIS_HOST: "${REDIS_HOST:-redis}"
+    QUEUE_BULL_REDIS_PORT: "${REDIS_PORT:-6379}"
     QUEUE_HEALTH_CHECK_ACTIVE: true
-    WEBHOOK_URL: ${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}/
+    WEBHOOK_URL: "${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}/"
 
 x-ollama: &service-ollama
   image: ollama/ollama:latest
   container_name: ollama
   restart: unless-stopped
   environment:
-    - OLLAMA_CONTEXT_LENGTH=8192
-    - OLLAMA_FLASH_ATTENTION=1
-    - OLLAMA_KV_CACHE_TYPE=q8_0
-    - OLLAMA_MAX_LOADED_MODELS=2
+    OLLAMA_CONTEXT_LENGTH: "${OLLAMA_CONTEXT_LENGTH:-8192}"
+    OLLAMA_FLASH_ATTENTION: 1
+    OLLAMA_GPU_OVERHEAD: "${OLLAMA_GPU_OVERHEAD:-0}"
+    OLLAMA_KEEP_ALIVE: "${OLLAMA_KEEP_ALIVE:-}"
+    OLLAMA_KV_CACHE_TYPE: "${OLLAMA_KV_CACHE_TYPE:-q8_0}"
+    OLLAMA_MAX_LOADED_MODELS: "${OLLAMA_MAX_LOADED_MODELS:-2}"
+    OLLAMA_NUM_PARALLEL: "${OLLAMA_NUM_PARALLEL:-}"
+    OLLAMA_SCHED_SPREAD: "${OLLAMA_SCHED_SPREAD:-}"
+  # Optional extra environment for every instance (llama.cpp LLAMA_ARG_*,
+  # ROCm HSA_OVERRIDE_GFX_VERSION, ...). Kept out of 'environment:' on purpose:
+  # an interpolated "${VAR:-}" would hand llama-server an EMPTY value, and an
+  # empty LLAMA_ARG_FIT_TARGET makes it exit at startup. A missing file adds
+  # nothing. Keys set in 'environment:' above always win over this file.
+  # Per-instance files (ollama2.env, ...) are added by generate_ollama_instances.sh.
+  env_file:
+    - path: ./ollama.env
+      required: false
   volumes:
     - ollama_storage:/root/.ollama
 
@@ -103,21 +161,137 @@ x-init-ollama: &init-ollama
     - "-c"
     - "sleep 3; OLLAMA_HOST=ollama:11434 ollama pull qwen2.5:7b-instruct-q4_K_M; OLLAMA_HOST=ollama:11434 ollama pull nomic-embed-text"
 
+# InvokeAI shared config (hardware variants below, mutually exclusive profiles like Ollama)
+x-invokeai: &service-invokeai
+  container_name: invokeai
+  restart: unless-stopped
+  logging: *default-logging
+  environment: &invokeai-env
+    <<: *proxy-env
+  volumes:
+    - ./invokeai:/invokeai
+  healthcheck:
+    test: ["CMD-SHELL", "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9090/api/v1/app/version', timeout=5)\" || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 90s
+
+# ComfyUI shared config (hardware variants below, mutually exclusive profiles like InvokeAI).
+# The volume MUST be /root: the image runs as root, its entrypoint copies the
+# bundled ComfyUI to /root/ComfyUI on first start and models, custom nodes and
+# user data live under it. (/home/runner, the old mount point, is the non-root
+# layout of the archived cu121 image; every tag this stack has used runs as
+# root, so nothing was ever written there.) Consequence: the ComfyUI code itself lives
+# in the volume and is updated through ComfyUI-Manager, not by pulling the image.
+x-comfyui: &service-comfyui
+  container_name: comfyui
+  restart: unless-stopped
+  logging: *default-logging
+  volumes:
+    - comfyui_data:/root
+  healthcheck:
+    test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8188', timeout=5)"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 60s
+
+# Worker-runner anchor for sidecar pattern (runner connects to worker via localhost)
+x-n8n-worker-runner: &service-n8n-worker-runner
+  build:
+    context: ./n8n
+    dockerfile: Dockerfile.runner
+    pull: true
+  environment:
+    <<: *proxy-env
+    GENERIC_TIMEZONE: "${GENERIC_TIMEZONE:-America/New_York}"
+    N8N_RUNNERS_AUTH_TOKEN: "${N8N_RUNNERS_AUTH_TOKEN}"
+    N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT: "${N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT:-0}"
+    N8N_RUNNERS_MAX_CONCURRENCY: "${N8N_RUNNERS_MAX_CONCURRENCY:-10}"
+    N8N_RUNNERS_TASK_BROKER_URI: http://127.0.0.1:5679
+
 services:
+  appsmith:
+    image: appsmith/appsmith-ce:release
+    container_name: appsmith
+    profiles: ["appsmith"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *proxy-env
+      APPSMITH_ENCRYPTION_PASSWORD: "${APPSMITH_ENCRYPTION_PASSWORD}"
+      APPSMITH_ENCRYPTION_SALT: "${APPSMITH_ENCRYPTION_SALT}"
+      APPSMITH_DISABLE_TELEMETRY: "true"
+    volumes:
+      - appsmith_data:/appsmith-stacks
+    healthcheck:
+      test: ["CMD-SHELL", "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= curl -fsS http://localhost/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
   flowise:
     image: flowiseai/flowise
     restart: unless-stopped
     container_name: flowise
     profiles: ["flowise"]
     environment:
-      - PORT=3001
-      - FLOWISE_USERNAME=${FLOWISE_USERNAME}
-      - FLOWISE_PASSWORD=${FLOWISE_PASSWORD}
+      <<: *proxy-env
+      PORT: 3001
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ~/.flowise:/root/.flowise
     entrypoint: /bin/sh -c "sleep 3; flowise start"
+
+  # ---------------------------------------------------------------------------
+  # Open Terminal (profile "open-terminal") - execution environment for Open WebUI
+  # agents: shell, filesystem, runtime package installs. Internal only: no ports,
+  # no Caddy block. Open WebUI reaches it as http://open-terminal:8000; the admin
+  # adds it under Admin Settings > Integrations > Open Terminal, so the key stays
+  # server-side. Only the full image ("latest" or a release tag) supports
+  # multi-user and runtime installs; the slim/alpine/openshift variants do
+  # neither, and 05_configure_services.sh refuses them in multi-user mode.
+  # Multi-user creates a plain Linux
+  # account (no sudo) per Open WebUI user id, hence the volume is /home, not
+  # /home/user; with multi-user off the chat gets the image's sudo-capable user.
+  # Never mount docker.sock here: the entrypoint would hand the agent's shell the
+  # host Docker daemon. OPEN_TERMINAL_ALLOWED_DOMAINS is deliberately absent: the
+  # entrypoint reads a set-but-empty value as "block all egress" and needs
+  # NET_ADMIN for iptables, so an interpolated default would crash the container.
+  # Add it together with cap_add NET_ADMIN in docker-compose.override.yml if wanted.
+  # ---------------------------------------------------------------------------
+  open-terminal:
+    image: "ghcr.io/open-webui/open-terminal:${OPEN_TERMINAL_VERSION:-latest}"
+    container_name: open-terminal
+    profiles: ["open-terminal"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *proxy-env
+      OPEN_TERMINAL_API_KEY: "${OPEN_TERMINAL_API_KEY}"
+      OPEN_TERMINAL_MULTI_USER: "${OPEN_TERMINAL_MULTI_USER:-true}"
+      # Reinstalled on every container start. In multi-user mode this is the only
+      # way to add apt packages (per-user accounts have no sudo).
+      OPEN_TERMINAL_PACKAGES: "${OPEN_TERMINAL_PACKAGES:-}"
+      OPEN_TERMINAL_PIP_PACKAGES: "${OPEN_TERMINAL_PIP_PACKAGES:-}"
+      OPEN_TERMINAL_NPM_PACKAGES: "${OPEN_TERMINAL_NPM_PACKAGES:-}"
+    volumes:
+      - open_terminal_home:/home
+    # Safety valve against a runaway build or a stuck port proxy, not a quota.
+    deploy:
+      resources:
+        limits:
+          cpus: "${OPEN_TERMINAL_CPU_LIMIT:-2.0}"
+          memory: "${OPEN_TERMINAL_MEMORY_LIMIT:-2G}"
+    healthcheck:
+      test: ["CMD-SHELL", "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= curl -fs http://localhost:8000/docs || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -125,11 +299,18 @@ services:
     container_name: open-webui
     profiles: ["open-webui"]
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
+      <<: *proxy-env
+      OLLAMA_BASE_URL: http://ollama:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - open-webui:/app/backend/data
+    healthcheck:
+      test: ["CMD-SHELL", "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= curl -fs http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
   n8n-import:
     <<: *service-n8n
@@ -137,12 +318,12 @@ services:
     profiles: ["n8n"]
     environment:
       <<: *service-n8n-env
-      RUN_N8N_IMPORT: ${RUN_N8N_IMPORT:-false}
+      RUN_N8N_IMPORT: "${RUN_N8N_IMPORT:-false}"
     entrypoint: /bin/sh
-    command: /scripts/n8n_import_script.sh
+    command: /scripts/import_workflows.sh
     volumes:
       - ./n8n/backup:/backup
-      - ./n8n/n8n_import_script.sh:/scripts/n8n_import_script.sh:ro
+      - ./scripts/import_workflows.sh:/scripts/import_workflows.sh:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,27 +337,206 @@ services:
       - n8n_storage:/home/node/.n8n
       - ./n8n/backup:/backup
       - ./shared:/data/shared
+    healthcheck:
+      test: ["CMD-SHELL", "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     depends_on:
       n8n-import:
         condition: service_completed_successfully
 
-  n8n-worker:
+  # Template services for worker-runner pairs (used by docker-compose.n8n-workers.yml via extends)
+  # These templates use profile "n8n-template" which is never activated directly
+  n8n-worker-template:
     <<: *service-n8n
-    profiles: ["n8n"]
-    restart: unless-stopped
+    profiles: ["n8n-template"]
     command: worker
     volumes:
       - n8n_storage:/home/node/.n8n
       - ./shared:/data/shared
+    healthcheck:
+      test: ["CMD-SHELL", "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  n8n-runner-template:
+    <<: *service-n8n-worker-runner
+    profiles: ["n8n-template"]
+    entrypoint: ["/bin/sh", "-c", "/usr/local/bin/task-runner-launcher javascript python"]
+    healthcheck:
+      test: ["CMD-SHELL", "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= wget -qO- http://localhost:5680/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  n8n-mcp:
+    image: "${N8N_MCP_IMAGE:-ghcr.io/czlonkowski/n8n-mcp:latest}"
+    container_name: n8n-mcp
+    profiles: ["n8n-mcp"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *proxy-env
+      # The image defaults MCP_MODE to "stdio"; "http" is required to serve HTTP.
+      # Do NOT set USE_FIXED_HTTP - upstream deprecated it and it breaks streaming.
+      MCP_MODE: http
+      NODE_ENV: production
+      PORT: "3000"
+      LOG_LEVEL: "${N8N_MCP_LOG_LEVEL:-info}"
+      # Mandatory: the entrypoint exits 1 in http mode without a token.
+      # Caddy gates on this same token, so one Bearer header satisfies both.
+      AUTH_TOKEN: "${N8N_MCP_AUTH_TOKEN}"
+      # Real client IPs behind Caddy. Without it the failed-auth rate limit is
+      # shared by every client via Caddy's single container IP.
+      TRUST_PROXY: "1"
+      # What the server advertises as its own address. ':+' prepends the scheme
+      # only when a hostname is set, so an unset N8N_MCP_HOSTNAME falls back to
+      # the whole localhost URL rather than to a bare "https://".
+      BASE_URL: "${N8N_MCP_HOSTNAME:+https://}${N8N_MCP_HOSTNAME:-http://localhost:3000}"
+      # Anonymous telemetry is ENABLED by default upstream.
+      N8N_MCP_TELEMETRY_DISABLED: "${N8N_MCP_TELEMETRY_DISABLED:-true}"
+      # Blank N8N_API_KEY = documentation-only mode (node docs, schemas,
+      # templates). Paste an n8n API key to unlock the workflow-management
+      # tools. An empty value fails upstream's validation and is treated as
+      # unconfigured, so the service still starts cleanly.
+      N8N_API_URL: "${N8N_API_URL:-http://n8n:5678}"
+      N8N_API_KEY: "${N8N_API_KEY:-}"
+      # Optional. The access token of n8n's own MCP server (Settings ->
+      # Instance-level MCP, n8n >= 2.34) - a separate secret from the Public
+      # API key. It unlocks tools the Public API cannot serve (agents, dynamic
+      # node resources, workflow version history, datatable columns). The
+      # endpoint is derived from N8N_API_URL. Blank = Public API only, as before.
+      N8N_MCP_ACCESS_TOKEN: "${N8N_MCP_ACCESS_TOKEN:-}"
+      # n8n resolves to a private Docker IP, and n8n-MCP's own SSRF guard
+      # rejects private ranges in both "strict" (upstream default) and
+      # "moderate", which would fail every n8n API call. "permissive" still
+      # blocks cloud-metadata endpoints.
+      WEBHOOK_SECURITY_MODE: "${N8N_MCP_WEBHOOK_SECURITY_MODE:-permissive}"
+    # Deliberately no volume: the node database is baked into the image and
+    # re-seeded only when absent, so a named volume would mask the image copy
+    # and freeze the node catalogue after every image update. The only state
+    # here is a regenerable, read-mostly SQLite index.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= curl -fsS http://127.0.0.1:3000/health > /dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # n8n Assistant sandbox (profile "n8n-sandbox") - upstream n8n-sandbox-service.
+  # Runs the code the AI Assistant / Agents generate. Three services, no ports,
+  # no Caddy block: n8n reaches sandbox-api by service name. The mTLS certs are
+  # issued for the names "sandbox-api" and "sandbox-runner-1" - keep them.
+  # The three images are released together; N8N_SANDBOX_VERSION selects one tag for all.
+  # ---------------------------------------------------------------------------
+  # One-shot: generates the CA and leaf certs into the shared volume, then exits.
+  # Skips generation when the certs already exist, so it is safe on every start
+  # (set SANDBOX_TLS_REGEN=1 on this service to force new certs). Keys stay 0600:
+  # /tls/api is chowned to the api image's user, /tls/runner stays root's and the
+  # runner runs as root (privileged, or ID-mapped root under sysbox-runc).
+  sandbox-certs:
+    image: "ghcr.io/n8n-io/n8n-sandbox-service-api:${N8N_SANDBOX_VERSION:-latest}"
+    container_name: sandbox-certs
+    profiles: ["n8n-sandbox"]
+    restart: "no"
+    logging: *default-logging
+    user: "0:0"
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        bootstrap-mtls.sh --out-dir /tls --api-san sandbox-api
+        --control-san-prefix sandbox-runner &&
+        chown -R sandbox-api:sandbox-api /tls/api
+    environment:
+      NUM_RUNNERS: "1"
+    volumes:
+      - n8n_sandbox_tls:/tls
+
+  sandbox-api:
+    image: "ghcr.io/n8n-io/n8n-sandbox-service-api:${N8N_SANDBOX_VERSION:-latest}"
+    container_name: sandbox-api
+    profiles: ["n8n-sandbox"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      # n8n authenticates with N8N_SANDBOX_SERVICE_API_KEY, which must be one of these.
+      SANDBOX_API_KEYS: "${N8N_SANDBOX_API_KEY}"
+      SANDBOX_API_RUNNER_REGISTRATION_TOKEN: "${N8N_SANDBOX_RUNNER_REGISTRATION_TOKEN}"
+      SANDBOX_API_RUNNER_API_KEY: "${N8N_SANDBOX_RUNNER_API_KEY}"
+      SANDBOX_API_GRPC_TLS_CERT_FILE: /tls/api/grpc-server.crt
+      SANDBOX_API_GRPC_TLS_KEY_FILE: /tls/api/grpc-server.key
+      SANDBOX_API_GRPC_TLS_CLIENT_CA_FILE: /tls/api/ca.crt
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_CA_FILE: /tls/api/ca.crt
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_CERT_FILE: /tls/api/control-grpc-api-client.crt
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_KEY_FILE: /tls/api/control-grpc-api-client.key
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_SERVER_NAME: sandbox-runner-1
+    volumes:
+      - n8n_sandbox_tls:/tls:ro
+      - n8n_sandbox_api_data:/var/lib/n8n-sandbox-api
+    healthcheck:
+      test: ["CMD-SHELL", "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     depends_on:
-      n8n:
-        condition: service_started
-      redis:
+      sandbox-certs:
+        condition: service_completed_successfully
+
+  # Docker-in-Docker host for the sandboxes. Isolated with sysbox-runc when
+  # 05_configure_services.sh could install it (N8N_SANDBOX_RUNNER_RUNTIME); with
+  # the privileged fallback accepted there it runs privileged, which is
+  # root-equivalent on the host. The shipped runc + false pair cannot run
+  # Docker-in-Docker at all ('make doctor' flags it). Never publish its ports.
+  # Deliberately no volume for the inner Docker: the sandbox image is
+  # pulled on first use after each recreate, so it always matches the runner's tag
+  # instead of a cached copy going stale behind it.
+  sandbox-runner-1:
+    image: "ghcr.io/n8n-io/n8n-sandbox-service-runner-dind:${N8N_SANDBOX_VERSION:-latest}"
+    container_name: sandbox-runner-1
+    profiles: ["n8n-sandbox"]
+    restart: unless-stopped
+    logging: *default-logging
+    runtime: "${N8N_SANDBOX_RUNNER_RUNTIME:-runc}"
+    privileged: "${N8N_SANDBOX_RUNNER_PRIVILEGED:-false}"
+    environment:
+      SANDBOX_RUNNER_REGISTRATION_TOKEN: "${N8N_SANDBOX_RUNNER_REGISTRATION_TOKEN}"
+      SANDBOX_RUNNER_API_KEYS: "${N8N_SANDBOX_RUNNER_API_KEY}"
+      SANDBOX_RUNNER_API_GRPC_ADDR: sandbox-api:9090
+      SANDBOX_RUNNER_HTTP_BASE_URL: https://sandbox-runner-1:8080
+      SANDBOX_RUNNER_CONTROL_GRPC_LISTEN_ADDR: ":9091"
+      SANDBOX_RUNNER_CONTROL_GRPC_ADVERTISE_ADDR: sandbox-runner-1:9091
+      SANDBOX_RUNNER_ID: runner-1
+      SANDBOX_RUNNER_DOCKER_SANDBOX_IMAGE: "ghcr.io/n8n-io/n8n-sandbox-service-sandbox:${N8N_SANDBOX_VERSION:-latest}"
+      SANDBOX_RUNNER_REGISTRATION_GRPC_CA_FILE: /tls/runner/ca.crt
+      SANDBOX_RUNNER_REGISTRATION_GRPC_CERT_FILE: /tls/runner/grpc-client.crt
+      SANDBOX_RUNNER_REGISTRATION_GRPC_KEY_FILE: /tls/runner/grpc-client.key
+      SANDBOX_RUNNER_REGISTRATION_GRPC_SERVER_NAME: sandbox-api
+      SANDBOX_RUNNER_CONTROL_GRPC_TLS_CERT_FILE: /tls/runner/control-grpc-server.crt
+      SANDBOX_RUNNER_CONTROL_GRPC_TLS_KEY_FILE: /tls/runner/control-grpc-server.key
+      SANDBOX_RUNNER_CONTROL_GRPC_TLS_CLIENT_CA_FILE: /tls/runner/ca.crt
+    volumes:
+      - n8n_sandbox_tls:/tls:ro
+    # The runner listener is TLS-only, hence https and --no-check-certificate.
+    healthcheck:
+      test: ["CMD-SHELL", "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= wget -q -O /dev/null --no-check-certificate https://localhost:8080/readyz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+    depends_on:
+      sandbox-api:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
-    deploy:
-      replicas: ${N8N_WORKER_COUNT:-1}
 
   qdrant:
     image: qdrant/qdrant
@@ -186,7 +546,7 @@ services:
     volumes:
       - qdrant_storage:/qdrant/storage
     environment:
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+      QDRANT__SERVICE__API_KEY: "${QDRANT_API_KEY}"
     expose:
       - "6333"
 
@@ -201,7 +561,7 @@ services:
       - ./neo4j/data:/data
       - ./neo4j/plugins:/plugins
     environment:
-      - NEO4J_AUTH=${NEO4J_AUTH_USERNAME}/${NEO4J_AUTH_PASSWORD}
+      - "NEO4J_AUTH=${NEO4J_AUTH_USERNAME}/${NEO4J_AUTH_PASSWORD}"
     healthcheck:
       test:
         [
@@ -216,6 +576,43 @@ services:
         soft: 40000
         hard: 40000
 
+  nocodb:
+    image: nocodb/nocodb:latest
+    container_name: nocodb
+    profiles: ["nocodb"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      # NocoDB rejects external data sources whose host resolves to a private
+      # range (SSRF protection, GHSA-w43h-r5m5-p832), which covers every
+      # hostname on this Docker network - including "postgres". The check first
+      # appears in helpers/validateDbConnectionHost.ts at tag 2026.05.2; the
+      # advisory metadata says 2026.05.1, and the two genuinely disagree.
+      # This opt-in is deliberately the narrow one: it re-allows internal
+      # databases only. Webhooks stay gated by NC_ALLOW_LOCAL_HOOKS, and on
+      # 2026.07.0+ data import by NC_ALLOW_LOCAL_DATA_IMPORT (before that
+      # release, import was gated by NC_ALLOW_LOCAL_HOOKS too). Never swap this
+      # for NC_DISABLE_SSRF_PROTECTION, which turns all of them off.
+      # Compared with === 'true', so it must be the lowercase string.
+      NC_ALLOW_LOCAL_EXTERNAL_DBS: "true"
+      NC_AUTH_JWT_SECRET: "${NOCODB_JWT_SECRET}"
+      NC_DB: "pg://postgres:5432?u=postgres&p=${POSTGRES_PASSWORD}&d=nocodb"
+      NC_PUBLIC_URL: "https://${NOCODB_HOSTNAME}"
+      NC_REDIS_URL: redis://redis:6379/1
+    volumes:
+      - nocodb_data:/usr/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   caddy:
     container_name: caddy
     image: docker.io/library/caddy:2-alpine
@@ -224,77 +621,113 @@ services:
       - "443:443"
       - "7687:7687"
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy-addon:/etc/caddy/addons:ro
+      - ./certs:/etc/caddy/certs:ro
+      - ./welcome:/srv/welcome:ro
       - caddy-data:/data:rw
       - caddy-config:/config:rw
     environment:
-      - COMFYUI_HOSTNAME=${COMFYUI_HOSTNAME}
-      - COMFYUI_PASSWORD_HASH=${COMFYUI_PASSWORD_HASH}
-      - COMFYUI_USERNAME=${COMFYUI_USERNAME}
-      - DIFY_HOSTNAME=${DIFY_HOSTNAME}
-      - DOCLING_HOSTNAME=${DOCLING_HOSTNAME}
-      - DOCLING_PASSWORD_HASH=${DOCLING_PASSWORD_HASH}
-      - DOCLING_USERNAME=${DOCLING_USERNAME}
-      - FLOWISE_HOSTNAME=${FLOWISE_HOSTNAME}
-      - GRAFANA_HOSTNAME=${GRAFANA_HOSTNAME}
-      - LANGFUSE_HOSTNAME=${LANGFUSE_HOSTNAME}
-      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-internal}
-      - LETTA_HOSTNAME=${LETTA_HOSTNAME}
-      - LIGHTRAG_HOSTNAME=${LIGHTRAG_HOSTNAME}
-      - LT_HOSTNAME=${LT_HOSTNAME}
-      - LT_USERNAME=${LT_USERNAME}
-      - LT_PASSWORD_HASH=${LT_PASSWORD_HASH}
-      - N8N_HOSTNAME=${N8N_HOSTNAME}
-      - NEO4J_HOSTNAME=${NEO4J_HOSTNAME}
-      - WAHA_HOSTNAME=${WAHA_HOSTNAME}
-      - PADDLEOCR_HOSTNAME=${PADDLEOCR_HOSTNAME}
-      - PADDLEOCR_PASSWORD_HASH=${PADDLEOCR_PASSWORD_HASH}
-      - PADDLEOCR_USERNAME=${PADDLEOCR_USERNAME}
-      - PORTAINER_HOSTNAME=${PORTAINER_HOSTNAME}
-      - POSTIZ_HOSTNAME=${POSTIZ_HOSTNAME}
-      - POSTGRESUS_HOSTNAME=${POSTGRESUS_HOSTNAME}
-      - PROMETHEUS_HOSTNAME=${PROMETHEUS_HOSTNAME}
-      - PROMETHEUS_PASSWORD_HASH=${PROMETHEUS_PASSWORD_HASH}
-      - PROMETHEUS_USERNAME=${PROMETHEUS_USERNAME}
-      - QDRANT_HOSTNAME=${QDRANT_HOSTNAME}
-      - RAGAPP_HOSTNAME=${RAGAPP_HOSTNAME}
-      - RAGFLOW_HOSTNAME=${RAGFLOW_HOSTNAME}
-      - RAGAPP_PASSWORD_HASH=${RAGAPP_PASSWORD_HASH}
-      - RAGAPP_USERNAME=${RAGAPP_USERNAME}
-      - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME}
-      - SEARXNG_PASSWORD_HASH=${SEARXNG_PASSWORD_HASH}
-      - SEARXNG_USERNAME=${SEARXNG_USERNAME}
-      - SUPABASE_HOSTNAME=${SUPABASE_HOSTNAME}
-      - WEAVIATE_HOSTNAME=${WEAVIATE_HOSTNAME}
-      - WEBUI_HOSTNAME=${WEBUI_HOSTNAME}
+      APPSMITH_HOSTNAME: "${APPSMITH_HOSTNAME}"
+      COMFYUI_HOSTNAME: "${COMFYUI_HOSTNAME}"
+      COMFYUI_PASSWORD_HASH: "${COMFYUI_PASSWORD_HASH}"
+      COMFYUI_USERNAME: "${COMFYUI_USERNAME}"
+      DIFY_HOSTNAME: "${DIFY_HOSTNAME}"
+      DOCLING_HOSTNAME: "${DOCLING_HOSTNAME}"
+      DOCLING_PASSWORD_HASH: "${DOCLING_PASSWORD_HASH}"
+      DOCLING_USERNAME: "${DOCLING_USERNAME}"
+      FLOWISE_HOSTNAME: "${FLOWISE_HOSTNAME}"
+      GRAFANA_HOSTNAME: "${GRAFANA_HOSTNAME}"
+      INVOKEAI_HOSTNAME: "${INVOKEAI_HOSTNAME}"
+      INVOKEAI_PASSWORD_HASH: "${INVOKEAI_PASSWORD_HASH}"
+      INVOKEAI_USERNAME: "${INVOKEAI_USERNAME}"
+      LANGFUSE_HOSTNAME: "${LANGFUSE_HOSTNAME}"
+      LETSENCRYPT_EMAIL: "${LETSENCRYPT_EMAIL:-internal}"
+      LETTA_HOSTNAME: "${LETTA_HOSTNAME}"
+      LIGHTRAG_HOSTNAME: "${LIGHTRAG_HOSTNAME}"
+      LT_HOSTNAME: "${LT_HOSTNAME}"
+      LT_PASSWORD_HASH: "${LT_PASSWORD_HASH}"
+      LT_USERNAME: "${LT_USERNAME}"
+      N8N_HOSTNAME: "${N8N_HOSTNAME}"
+      N8N_MCP_AUTH_TOKEN: "${N8N_MCP_AUTH_TOKEN}"
+      # Defaulted, unlike the other hostnames: 'git pull' + 'make restart' does
+      # not add new .env variables, so an .env from before this service existed
+      # would expand to an empty Caddy site address, which is a Caddyfile PARSE
+      # error - Caddy would crash-loop and take HTTPS down for every service,
+      # not just this one. '.localhost' gets an internal cert, so no ACME noise.
+      N8N_MCP_HOSTNAME: "${N8N_MCP_HOSTNAME:-n8n-mcp.localhost}"
+      NEO4J_HOSTNAME: "${NEO4J_HOSTNAME}"
+      NOCODB_HOSTNAME: "${NOCODB_HOSTNAME}"
+      OLLAMA_HOSTNAME: "${OLLAMA_HOSTNAME}"
+      OLLAMA_CADDY_API_TOKEN: "${OLLAMA_CADDY_API_TOKEN}"
+      PADDLEOCR_HOSTNAME: "${PADDLEOCR_HOSTNAME}"
+      PADDLEOCR_PASSWORD_HASH: "${PADDLEOCR_PASSWORD_HASH}"
+      PADDLEOCR_USERNAME: "${PADDLEOCR_USERNAME}"
+      PORTAINER_HOSTNAME: "${PORTAINER_HOSTNAME}"
+      DATABASUS_HOSTNAME: "${DATABASUS_HOSTNAME}"
+      POSTIZ_HOSTNAME: "${POSTIZ_HOSTNAME}"
+      TEMPORAL_UI_HOSTNAME: "${TEMPORAL_UI_HOSTNAME}"
+      TEMPORAL_UI_USERNAME: "${TEMPORAL_UI_USERNAME}"
+      TEMPORAL_UI_PASSWORD_HASH: "${TEMPORAL_UI_PASSWORD_HASH}"
+      PROMETHEUS_HOSTNAME: "${PROMETHEUS_HOSTNAME}"
+      PROMETHEUS_PASSWORD_HASH: "${PROMETHEUS_PASSWORD_HASH}"
+      PROMETHEUS_USERNAME: "${PROMETHEUS_USERNAME}"
+      QDRANT_HOSTNAME: "${QDRANT_HOSTNAME}"
+      RAGAPP_HOSTNAME: "${RAGAPP_HOSTNAME}"
+      RAGAPP_PASSWORD_HASH: "${RAGAPP_PASSWORD_HASH}"
+      RAGAPP_USERNAME: "${RAGAPP_USERNAME}"
+      RAGFLOW_HOSTNAME: "${RAGFLOW_HOSTNAME}"
+      SEARXNG_HOSTNAME: "${SEARXNG_HOSTNAME}"
+      SEARXNG_PASSWORD_HASH: "${SEARXNG_PASSWORD_HASH}"
+      SEARXNG_USERNAME: "${SEARXNG_USERNAME}"
+      SUPABASE_HOSTNAME: "${SUPABASE_HOSTNAME}"
+      UPTIME_KUMA_HOSTNAME: "${UPTIME_KUMA_HOSTNAME}"
+      WAHA_HOSTNAME: "${WAHA_HOSTNAME}"
+      WEAVIATE_HOSTNAME: "${WEAVIATE_HOSTNAME}"
+      WEBUI_HOSTNAME: "${WEBUI_HOSTNAME}"
+      WELCOME_HOSTNAME: "${WELCOME_HOSTNAME}"
+      WELCOME_PASSWORD_HASH: "${WELCOME_PASSWORD_HASH}"
+      WELCOME_USERNAME: "${WELCOME_USERNAME}"
     cap_drop:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "1"
+    logging: *default-logging
 
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
     profiles: ["cloudflare-tunnel"]
     restart: unless-stopped
-    command: tunnel --no-autoupdate run
+    command: "tunnel --no-autoupdate run --protocol ${CLOUDFLARE_TUNNEL_PROTOCOL:-auto}"
     environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "1"
+      TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN}"
+    logging: *default-logging
+
+  gost:
+    image: gogost/gost:latest
+    container_name: gost
+    profiles: ["gost"]
+    restart: unless-stopped
+    command:
+      - "-L"
+      - "http://${GOST_USERNAME}:${GOST_PASSWORD}@:8080"
+      - "-F"
+      - "${GOST_UPSTREAM_PROXY}"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8080 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging
 
   langfuse-worker:
     image: langfuse/langfuse-worker:3
+    container_name: langfuse-worker
     restart: always
     profiles: ["langfuse"]
     depends_on: &langfuse-depends-on
@@ -307,78 +740,81 @@ services:
       clickhouse:
         condition: service_healthy
     environment: &langfuse-worker-env
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/langfuse
-      SALT: ${LANGFUSE_SALT}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
-      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-true}
-      CLICKHOUSE_MIGRATION_URL: ${CLICKHOUSE_MIGRATION_URL:-clickhouse://clickhouse:9000}
-      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
-      CLICKHOUSE_CLUSTER_ENABLED: ${CLICKHOUSE_CLUSTER_ENABLED:-false}
-      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse}
-      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}
-      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID:-minio}
-      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
-      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: ${LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT:-http://minio:9000}
-      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE:-true}
-      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: ${LANGFUSE_S3_EVENT_UPLOAD_PREFIX:-events/}
-      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: ${LANGFUSE_S3_MEDIA_UPLOAD_BUCKET:-langfuse}
-      LANGFUSE_S3_MEDIA_UPLOAD_REGION: ${LANGFUSE_S3_MEDIA_UPLOAD_REGION:-auto}
-      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID:-minio}
-      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
-      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT:-http://localhost:9090}
-      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE:-true}
-      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: ${LANGFUSE_S3_MEDIA_UPLOAD_PREFIX:-media/}
-      LANGFUSE_S3_BATCH_EXPORT_ENABLED: ${LANGFUSE_S3_BATCH_EXPORT_ENABLED:-false}
-      LANGFUSE_S3_BATCH_EXPORT_BUCKET: ${LANGFUSE_S3_BATCH_EXPORT_BUCKET:-langfuse}
-      LANGFUSE_S3_BATCH_EXPORT_PREFIX: ${LANGFUSE_S3_BATCH_EXPORT_PREFIX:-exports/}
-      LANGFUSE_S3_BATCH_EXPORT_REGION: ${LANGFUSE_S3_BATCH_EXPORT_REGION:-auto}
-      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_ENDPOINT:-http://minio:9000}
-      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT:-http://localhost:9090}
-      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: ${LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID:-minio}
-      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
-      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: ${LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE:-true}
-      LANGFUSE_INGESTION_QUEUE_DELAY_MS: ${LANGFUSE_INGESTION_QUEUE_DELAY_MS:-}
-      LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS: ${LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS:-}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_AUTH: ${REDIS_AUTH:-}
-      REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED:-false}
-      REDIS_TLS_CA: ${REDIS_TLS_CA:-/certs/ca.crt}
-      REDIS_TLS_CERT: ${REDIS_TLS_CERT:-/certs/redis.crt}
-      REDIS_TLS_KEY: ${REDIS_TLS_KEY:-/certs/redis.key}
+      <<: *proxy-env
+      DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/langfuse"
+      SALT: "${LANGFUSE_SALT}"
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY}"
+      TELEMETRY_ENABLED: "${TELEMETRY_ENABLED:-true}"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-true}"
+      CLICKHOUSE_MIGRATION_URL: "${CLICKHOUSE_MIGRATION_URL:-clickhouse://clickhouse:9000}"
+      CLICKHOUSE_URL: "${CLICKHOUSE_URL:-http://clickhouse:8123}"
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER:-clickhouse}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD}"
+      CLICKHOUSE_CLUSTER_ENABLED: "${CLICKHOUSE_CLUSTER_ENABLED:-false}"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: "${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse}"
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: "${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}"
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: "${LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID:-minio}"
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD}"
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: "${LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT:-http://minio:9000}"
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "${LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE:-true}"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: "${LANGFUSE_S3_EVENT_UPLOAD_PREFIX:-events/}"
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: "${LANGFUSE_S3_MEDIA_UPLOAD_BUCKET:-langfuse}"
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: "${LANGFUSE_S3_MEDIA_UPLOAD_REGION:-auto}"
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: "${LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID:-minio}"
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD}"
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: "${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT:-http://localhost:9090}"
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "${LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE:-true}"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: "${LANGFUSE_S3_MEDIA_UPLOAD_PREFIX:-media/}"
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: "${LANGFUSE_S3_BATCH_EXPORT_ENABLED:-false}"
+      LANGFUSE_S3_BATCH_EXPORT_BUCKET: "${LANGFUSE_S3_BATCH_EXPORT_BUCKET:-langfuse}"
+      LANGFUSE_S3_BATCH_EXPORT_PREFIX: "${LANGFUSE_S3_BATCH_EXPORT_PREFIX:-exports/}"
+      LANGFUSE_S3_BATCH_EXPORT_REGION: "${LANGFUSE_S3_BATCH_EXPORT_REGION:-auto}"
+      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: "${LANGFUSE_S3_BATCH_EXPORT_ENDPOINT:-http://minio:9000}"
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: "${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT:-http://localhost:9090}"
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: "${LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID:-minio}"
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD}"
+      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: "${LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE:-true}"
+      LANGFUSE_INGESTION_QUEUE_DELAY_MS: "${LANGFUSE_INGESTION_QUEUE_DELAY_MS:-}"
+      LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS: "${LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS:-}"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_AUTH: "${REDIS_AUTH:-}"
+      REDIS_TLS_ENABLED: "${REDIS_TLS_ENABLED:-false}"
+      REDIS_TLS_CA: "${REDIS_TLS_CA:-/certs/ca.crt}"
+      REDIS_TLS_CERT: "${REDIS_TLS_CERT:-/certs/redis.crt}"
+      REDIS_TLS_KEY: "${REDIS_TLS_KEY:-/certs/redis.key}"
 
   langfuse-web:
     image: langfuse/langfuse:3
+    container_name: langfuse-web
     restart: always
     profiles: ["langfuse"]
     depends_on: *langfuse-depends-on
     environment:
       <<: *langfuse-worker-env
-      NEXTAUTH_URL: https://${LANGFUSE_HOSTNAME}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-organization_id}
-      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-Organization}
-      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-project_id}
-      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-Project}
-      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}
-      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}
-      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-}
-      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
-      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
-      AUTH_DISABLE_SIGNUP: ${AUTH_DISABLE_SIGNUP:-true}
+      NEXTAUTH_URL: "https://${LANGFUSE_HOSTNAME}"
+      NEXTAUTH_SECRET: "${NEXTAUTH_SECRET}"
+      LANGFUSE_INIT_ORG_ID: "${LANGFUSE_INIT_ORG_ID:-organization_id}"
+      LANGFUSE_INIT_ORG_NAME: "${LANGFUSE_INIT_ORG_NAME:-Organization}"
+      LANGFUSE_INIT_PROJECT_ID: "${LANGFUSE_INIT_PROJECT_ID:-project_id}"
+      LANGFUSE_INIT_PROJECT_NAME: "${LANGFUSE_INIT_PROJECT_NAME:-Project}"
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: "${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}"
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: "${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}"
+      LANGFUSE_INIT_USER_EMAIL: "${LANGFUSE_INIT_USER_EMAIL:-}"
+      LANGFUSE_INIT_USER_NAME: "${LANGFUSE_INIT_USER_NAME:-}"
+      LANGFUSE_INIT_USER_PASSWORD: "${LANGFUSE_INIT_USER_PASSWORD:-}"
+      AUTH_DISABLE_SIGNUP: "${AUTH_DISABLE_SIGNUP:-true}"
 
   clickhouse:
     image: clickhouse/clickhouse-server
+    container_name: clickhouse
     restart: always
     profiles: ["langfuse"]
     user: "101:101"
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD}"
     volumes:
       - langfuse_clickhouse_data:/var/lib/clickhouse
       - langfuse_clickhouse_logs:/var/log/clickhouse-server
@@ -390,7 +826,8 @@ services:
       start_period: 1s
 
   minio:
-    image: minio/minio
+    image: quay.io/minio/minio:latest
+    container_name: minio
     restart: always
     profiles: ["langfuse"]
     entrypoint: sh
@@ -398,7 +835,7 @@ services:
     command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
     environment:
       MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
     volumes:
       - langfuse_minio_data:/data
     healthcheck:
@@ -410,7 +847,7 @@ services:
 
   postgres:
     container_name: postgres
-    image: postgres:${POSTGRES_VERSION:-17}
+    image: "pgvector/pgvector:pg${POSTGRES_VERSION:-17}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -419,17 +856,17 @@ services:
       retries: 10
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
       POSTGRES_DB: postgres
     volumes:
-      # TODO: Rename to postgres_data
-      - langfuse_postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
 
   redis:
     container_name: redis
     image: docker.io/valkey/valkey:8-alpine
     command: valkey-server --save 30 1 --loglevel warning
     restart: unless-stopped
+    stop_grace_period: 30s
     volumes:
       - valkey-data:/data
     cap_drop:
@@ -438,11 +875,7 @@ services:
       - SETGID
       - SETUID
       - DAC_OVERRIDE
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "1"
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
@@ -457,19 +890,15 @@ services:
     volumes:
       - ./searxng:/etc/searxng:rw
     environment:
-      - SEARXNG_BASE_URL=https://${SEARXNG_HOSTNAME:-localhost}/
-      - UWSGI_WORKERS=${SEARXNG_UWSGI_WORKERS:-4}
-      - UWSGI_THREADS=${SEARXNG_UWSGI_THREADS:-4}
+      SEARXNG_BASE_URL: "https://${SEARXNG_HOSTNAME:-localhost}/"
+      UWSGI_WORKERS: "${SEARXNG_UWSGI_WORKERS:-4}"
+      UWSGI_THREADS: "${SEARXNG_UWSGI_THREADS:-4}"
     # cap_drop: - ALL  # Temporarily commented out for first run
     cap_add:
       - CHOWN
       - SETGID
       - SETUID
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "1"
+    logging: *default-logging
 
   ollama-cpu:
     profiles: ["cpu"]
@@ -483,12 +912,34 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: "${OLLAMA_GPU_COUNT:-1}"
               capabilities: [gpu]
 
   ollama-gpu-amd:
     profiles: ["gpu-amd"]
     <<: *service-ollama
+    image: ollama/ollama:rocm
+    devices:
+      - "/dev/kfd"
+      - "/dev/dri"
+
+  # Templates for extra Ollama instances on multi-GPU hosts, used by
+  # docker-compose.ollama-instances.yml via 'extends'. The "ollama-template"
+  # profile is never activated directly.
+  #
+  # These deliberately carry NO 'deploy:' block. Compose APPENDS
+  # deploy.resources.reservations.devices across 'extends', so a count-based
+  # reservation here would leak an extra, arbitrary GPU into every instance
+  # that pins specific device IDs. Do not add one.
+  ollama-instance-template:
+    <<: *service-ollama
+    container_name: ollama-instance-template
+    profiles: ["ollama-template"]
+
+  ollama-instance-template-amd:
+    <<: *service-ollama
+    container_name: ollama-instance-template-amd
+    profiles: ["ollama-template"]
     image: ollama/ollama:rocm
     devices:
       - "/dev/kfd"
@@ -513,13 +964,42 @@ services:
     depends_on:
       - ollama-gpu-amd
 
+  invokeai-nvidia:
+    <<: *service-invokeai
+    image: ghcr.io/invoke-ai/invokeai:latest
+    profiles: ["invokeai-nvidia"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: "${INVOKEAI_GPU_COUNT:-1}"
+              capabilities: [gpu]
+
+  invokeai-amd:
+    <<: *service-invokeai
+    image: ghcr.io/invoke-ai/invokeai:main-rocm
+    profiles: ["invokeai-amd"]
+    devices:
+      - "/dev/kfd"
+      - "/dev/dri"
+    environment:
+      <<: *invokeai-env
+      AMD_VISIBLE_DEVICES: all
+      RENDER_GROUP_ID: "${RENDER_GROUP_ID:-}"
+
+  invokeai-cpu:
+    <<: *service-invokeai
+    image: ghcr.io/invoke-ai/invokeai:main-cpu
+    profiles: ["invokeai-cpu"]
+
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     profiles: ["monitoring"]
     restart: unless-stopped
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -541,10 +1021,16 @@ services:
       - 9100
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
     container_name: cadvisor
     profiles: ["monitoring"]
     restart: unless-stopped
+    mem_limit: 1g
+    mem_reservation: 256m
+    cpus: "1.0"
+    command:
+      - --housekeeping_interval=10s
+      - --docker_only=true
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:rw
@@ -559,8 +1045,8 @@ services:
     profiles: ["monitoring"]
     restart: unless-stopped
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_PROVISIONING_PATH=/etc/grafana/provisioning
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_PROVISIONING_PATH: /etc/grafana/provisioning
     volumes:
       - grafana:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
@@ -578,6 +1064,11 @@ services:
     shm_size: 1g # Recommended for browser operations
     env_file:
       - .env
+    environment:
+      <<: *proxy-env
+      # Without a token Crawl4AI 0.9+ binds 127.0.0.1 only and is unreachable
+      # from other containers; with it the API listens on the Docker network.
+      CRAWL4AI_API_TOKEN: "${CRAWL4AI_API_TOKEN}"
     deploy:
       resources:
         limits:
@@ -590,9 +1081,9 @@ services:
     profiles: ["gotenberg"]
     restart: unless-stopped
     environment:
-      - DISABLE_GOOGLE_CHROME=false
+      DISABLE_GOOGLE_CHROME: false
     healthcheck:
-      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -605,11 +1096,12 @@ services:
     volumes:
       - letta_data:/var/lib/postgresql/data
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
-      SECURE: ${LETTA_SECURE:-true}
-      LETTA_SERVER_PASSWORD: ${LETTA_SERVER_PASSWORD:-}
+      <<: *proxy-env
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-}"
+      SECURE: "${LETTA_SECURE:-true}"
+      LETTA_SERVER_PASSWORD: "${LETTA_SERVER_PASSWORD:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -624,10 +1116,10 @@ services:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "false"
       AUTHENTICATION_APIKEY_ENABLED: "true"
-      AUTHENTICATION_APIKEY_ALLOWED_KEYS: ${WEAVIATE_API_KEY}
-      AUTHENTICATION_APIKEY_USERS: ${WEAVIATE_USERNAME}
+      AUTHENTICATION_APIKEY_ALLOWED_KEYS: "${WEAVIATE_API_KEY}"
+      AUTHENTICATION_APIKEY_USERS: "${WEAVIATE_USERNAME}"
       AUTHORIZATION_ENABLE_RBAC: "true"
-      AUTHORIZATION_RBAC_ROOT_USERS: ${WEAVIATE_USERNAME}
+      AUTHORIZATION_RBAC_ROOT_USERS: "${WEAVIATE_USERNAME}"
       PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
       ENABLE_API_BASED_MODULES: "true"
       CLUSTER_HOSTNAME: "node1"
@@ -648,6 +1140,8 @@ services:
     container_name: ragapp
     profiles: ["ragapp"]
     restart: unless-stopped
+    environment:
+      <<: *proxy-env
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -656,7 +1150,71 @@ services:
     restart: unless-stopped
     volumes:
       - portainer_data:/data
-      - ${DOCKER_SOCKET_LOCATION:-/var/run/docker.sock}:/var/run/docker.sock
+      - "${DOCKER_SOCKET_LOCATION:-/var/run/docker.sock}:/var/run/docker.sock"
+
+  temporal-elasticsearch:
+    image: elasticsearch:7.17.27
+    container_name: temporal-elasticsearch
+    profiles: ["postiz"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      cluster.routing.allocation.disk.threshold_enabled: "true"
+      cluster.routing.allocation.disk.watermark.low: 512mb
+      cluster.routing.allocation.disk.watermark.high: 256mb
+      cluster.routing.allocation.disk.watermark.flood_stage: 128mb
+      discovery.type: single-node
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      xpack.security.enabled: "false"
+    volumes:
+      - temporal_elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    container_name: temporal
+    profiles: ["postiz"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DB: postgres12
+      POSTGRES_USER: postgres
+      POSTGRES_PWD: "${POSTGRES_PASSWORD}"
+      POSTGRES_SEEDS: postgres
+      DB_PORT: 5432
+      TEMPORAL_NAMESPACE: default
+      ENABLE_ES: "true"
+      ES_SEEDS: temporal-elasticsearch
+      ES_VERSION: v7
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal-elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "temporal operator cluster health --address $(hostname -i):7233 | grep -q SERVING || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: temporal-ui
+    profiles: ["postiz"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    depends_on:
+      temporal:
+        condition: service_healthy
 
   postiz:
     image: ghcr.io/gitroomhq/postiz-app:latest
@@ -664,81 +1222,108 @@ services:
     profiles: ["postiz"]
     restart: always
     environment:
-      BACKEND_INTERNAL_URL: http://postiz:3000
-      DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres?schema=postiz"
-      DISABLE_REGISTRATION: ${POSTIZ_DISABLE_REGISTRATION}
-      FRONTEND_URL: ${POSTIZ_HOSTNAME:+https://}${POSTIZ_HOSTNAME}
+      <<: *proxy-env
+      BACKEND_INTERNAL_URL: http://localhost:3000
+      DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTIZ_DB_NAME:-postiz}?schema=postiz"
+      DISABLE_REGISTRATION: "${POSTIZ_DISABLE_REGISTRATION}"
+      FRONTEND_URL: "${POSTIZ_HOSTNAME:+https://}${POSTIZ_HOSTNAME}"
       IS_GENERAL: "true" # Required for self-hosting.
-      JWT_SECRET: ${JWT_SECRET}
-      MAIN_URL: ${POSTIZ_HOSTNAME:+https://}${POSTIZ_HOSTNAME}
-      NEXT_PUBLIC_BACKEND_URL: ${POSTIZ_HOSTNAME:+https://}${POSTIZ_HOSTNAME}/api
+      JWT_SECRET: "${JWT_SECRET}"
+      MAIN_URL: "${POSTIZ_HOSTNAME:+https://}${POSTIZ_HOSTNAME}"
+      NEXT_PUBLIC_BACKEND_URL: "${POSTIZ_HOSTNAME:+https://}${POSTIZ_HOSTNAME}/api"
       NEXT_PUBLIC_UPLOAD_DIRECTORY: "/uploads"
       REDIS_URL: "redis://redis:6379"
       STORAGE_PROVIDER: "local"
+      TEMPORAL_ADDRESS: temporal:7233
       UPLOAD_DIRECTORY: "/uploads"
       # Social Media API Settings
-      X_API_KEY: ${X_API_KEY}
-      X_API_SECRET: ${X_API_SECRET}
-      LINKEDIN_CLIENT_ID: ${LINKEDIN_CLIENT_ID}
-      LINKEDIN_CLIENT_SECRET: ${LINKEDIN_CLIENT_SECRET}
-      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID}
-      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET}
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
-      BEEHIIVE_API_KEY: ${BEEHIIVE_API_KEY}
-      BEEHIIVE_PUBLICATION_ID: ${BEEHIIVE_PUBLICATION_ID}
-      THREADS_APP_ID: ${THREADS_APP_ID}
-      THREADS_APP_SECRET: ${THREADS_APP_SECRET}
-      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
-      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
-      YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID}
-      YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET}
-      TIKTOK_CLIENT_ID: ${TIKTOK_CLIENT_ID}
-      TIKTOK_CLIENT_SECRET: ${TIKTOK_CLIENT_SECRET}
-      PINTEREST_CLIENT_ID: ${PINTEREST_CLIENT_ID}
-      PINTEREST_CLIENT_SECRET: ${PINTEREST_CLIENT_SECRET}
-      DRIBBBLE_CLIENT_ID: ${DRIBBBLE_CLIENT_ID}
-      DRIBBBLE_CLIENT_SECRET: ${DRIBBBLE_CLIENT_SECRET}
-      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
-      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
-      DISCORD_BOT_TOKEN_ID: ${DISCORD_BOT_TOKEN_ID}
-      SLACK_ID: ${SLACK_ID}
-      SLACK_SECRET: ${SLACK_SECRET}
-      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET}
-      MASTODON_URL: ${MASTODON_URL}
-      MASTODON_CLIENT_ID: ${MASTODON_CLIENT_ID}
-      MASTODON_CLIENT_SECRET: ${MASTODON_CLIENT_SECRET}
+      X_API_KEY: "${X_API_KEY}"
+      X_API_SECRET: "${X_API_SECRET}"
+      LINKEDIN_CLIENT_ID: "${LINKEDIN_CLIENT_ID}"
+      LINKEDIN_CLIENT_SECRET: "${LINKEDIN_CLIENT_SECRET}"
+      REDDIT_CLIENT_ID: "${REDDIT_CLIENT_ID}"
+      REDDIT_CLIENT_SECRET: "${REDDIT_CLIENT_SECRET}"
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET}"
+      BEEHIIVE_API_KEY: "${BEEHIIVE_API_KEY}"
+      BEEHIIVE_PUBLICATION_ID: "${BEEHIIVE_PUBLICATION_ID}"
+      THREADS_APP_ID: "${THREADS_APP_ID}"
+      THREADS_APP_SECRET: "${THREADS_APP_SECRET}"
+      FACEBOOK_APP_ID: "${FACEBOOK_APP_ID}"
+      FACEBOOK_APP_SECRET: "${FACEBOOK_APP_SECRET}"
+      YOUTUBE_CLIENT_ID: "${YOUTUBE_CLIENT_ID}"
+      YOUTUBE_CLIENT_SECRET: "${YOUTUBE_CLIENT_SECRET}"
+      TIKTOK_CLIENT_ID: "${TIKTOK_CLIENT_ID}"
+      TIKTOK_CLIENT_SECRET: "${TIKTOK_CLIENT_SECRET}"
+      PINTEREST_CLIENT_ID: "${PINTEREST_CLIENT_ID}"
+      PINTEREST_CLIENT_SECRET: "${PINTEREST_CLIENT_SECRET}"
+      DRIBBBLE_CLIENT_ID: "${DRIBBBLE_CLIENT_ID}"
+      DRIBBBLE_CLIENT_SECRET: "${DRIBBBLE_CLIENT_SECRET}"
+      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID}"
+      DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET}"
+      DISCORD_BOT_TOKEN_ID: "${DISCORD_BOT_TOKEN_ID}"
+      SLACK_ID: "${SLACK_ID}"
+      SLACK_SECRET: "${SLACK_SECRET}"
+      SLACK_SIGNING_SECRET: "${SLACK_SIGNING_SECRET}"
+      MASTODON_URL: "${MASTODON_URL}"
+      MASTODON_CLIENT_ID: "${MASTODON_CLIENT_ID}"
+      MASTODON_CLIENT_SECRET: "${MASTODON_CLIENT_SECRET}"
     volumes:
       - postiz-config:/config/
       - postiz-uploads:/uploads/
+      - ./postiz.env:/app/.env:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      temporal:
+        condition: service_healthy
 
-  postgresus:
-    image: rostislavdugin/postgresus:latest
-    container_name: postgresus
-    profiles: ["postgresus"]
+  databasus:
+    image: databasus/databasus:latest
+    container_name: databasus
+    profiles: ["databasus"]
     restart: unless-stopped
+    logging: *default-logging
     volumes:
-      - postgresus_data:/postgresus-data
-
-  comfyui:
-    image: yanwk/comfyui-boot:cu124-slim
-    container_name: comfyui
-    profiles: ["comfyui"]
-    restart: unless-stopped
-    environment:
-      - CLI_ARGS=--listen 0.0.0.0 --cpu
-    volumes:
-      - comfyui_data:/home/runner
+      - databasus_data:/databasus-data
     healthcheck:
-      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:8188"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "databasus", "healthcheck"]
+      interval: 30s
+      timeout: 10s
       retries: 5
+      start_period: 60s
+
+  # ComfyUI hardware variants (mutually exclusive profiles, like InvokeAI).
+  # Deliberately NO CLI_ARGS here: each image ships the right default
+  # ("--cpu" baked into the cpu image, empty on the GPU images) and the
+  # entrypoint already adds --listen --port 8188. An explicit CLI_ARGS: ""
+  # would strip --cpu from the CPU image.
+  comfyui-nvidia:
+    <<: *service-comfyui
+    image: yanwk/comfyui-boot:cu126-slim
+    profiles: ["comfyui-nvidia"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: "${COMFYUI_GPU_COUNT:-1}"
+              capabilities: [gpu]
+
+  comfyui-amd:
+    <<: *service-comfyui
+    image: yanwk/comfyui-boot:rocm
+    profiles: ["comfyui-amd"]
+    devices:
+      - "/dev/kfd"
+      - "/dev/dri"
+
+  comfyui-cpu:
+    <<: *service-comfyui
+    image: yanwk/comfyui-boot:cpu
+    profiles: ["comfyui-cpu"]
 
   libretranslate:
     image: libretranslate/libretranslate:latest
@@ -746,22 +1331,22 @@ services:
     profiles: ["libretranslate"]
     restart: unless-stopped
     environment:
-      - LT_API_KEYS=${LT_API_KEYS:-false}
-      - LT_BATCH_LIMIT=${LT_BATCH_LIMIT:-}
-      - LT_CHAR_LIMIT=${LT_CHAR_LIMIT:-10000}
-      - LT_DEBUG=${LT_DEBUG:-false}
-      - LT_FRONTEND_LANGUAGE_SOURCE=${LT_FRONTEND_LANGUAGE_SOURCE:-auto}
-      - LT_FRONTEND_LANGUAGE_TARGET=${LT_FRONTEND_LANGUAGE_TARGET:-en}
-      - LT_FRONTEND_TIMEOUT=${LT_FRONTEND_TIMEOUT:-2000}
-      - LT_HOST=${LT_HOST:-0.0.0.0}
-      - LT_LOAD_ONLY=${LT_LOAD_ONLY:-}
-      - LT_METRICS=${LT_METRICS:-false}
-      - LT_PORT=${LT_PORT:-5000}
-      - LT_REQ_LIMIT=${LT_REQ_LIMIT:-}
-      - LT_SSL=${LT_SSL:-false}
-      - LT_SUGGESTIONS=${LT_SUGGESTIONS:-false}
-      - LT_THREADS=${LT_THREADS:-4}
-      - LT_UPDATE_MODELS=${LT_UPDATE_MODELS:-false}
+      LT_API_KEYS: "${LT_API_KEYS:-false}"
+      LT_BATCH_LIMIT: "${LT_BATCH_LIMIT:-}"
+      LT_CHAR_LIMIT: "${LT_CHAR_LIMIT:-10000}"
+      LT_DEBUG: "${LT_DEBUG:-false}"
+      LT_FRONTEND_LANGUAGE_SOURCE: "${LT_FRONTEND_LANGUAGE_SOURCE:-auto}"
+      LT_FRONTEND_LANGUAGE_TARGET: "${LT_FRONTEND_LANGUAGE_TARGET:-en}"
+      LT_FRONTEND_TIMEOUT: "${LT_FRONTEND_TIMEOUT:-2000}"
+      LT_HOST: "${LT_HOST:-0.0.0.0}"
+      LT_LOAD_ONLY: "${LT_LOAD_ONLY:-}"
+      LT_METRICS: "${LT_METRICS:-false}"
+      LT_PORT: "${LT_PORT:-5000}"
+      LT_REQ_LIMIT: "${LT_REQ_LIMIT:-}"
+      LT_SSL: "${LT_SSL:-false}"
+      LT_SUGGESTIONS: "${LT_SUGGESTIONS:-false}"
+      LT_THREADS: "${LT_THREADS:-4}"
+      LT_UPDATE_MODELS: "${LT_UPDATE_MODELS:-false}"
     volumes:
       - libretranslate_api_keys:/app/db
       - libretranslate_models:/home/libretranslate/.local:rw
@@ -773,8 +1358,10 @@ services:
     container_name: python-runner
     profiles: ["python-runner"]
     restart: unless-stopped
+    # init + exec make SIGTERM reach python so the container stops fast
+    init: true
     working_dir: /app
-    command: /bin/sh -c 'if [ -f /app/requirements.txt ]; then python -m pip install --no-cache-dir -r /app/requirements.txt; fi; python /app/main.py'
+    command: /bin/sh -c 'if [ -f /app/requirements.txt ]; then python -m pip install --no-cache-dir -r /app/requirements.txt; fi; exec python /app/main.py'
     volumes:
       - ./python-runner:/app
 
@@ -796,7 +1383,7 @@ services:
       - paddlex_data:/root/.paddlex
     healthcheck:
       test:
-        ["CMD-SHELL", "wget -qO- http://localhost:8080 > /dev/null || exit 1"]
+        ["CMD-SHELL", "wget -qO- http://localhost:8080/health > /dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -807,17 +1394,17 @@ services:
     profiles: ["waha"]
     restart: unless-stopped
     environment:
-      - WAHA_ENGINE=${WAHA_ENGINE}
-      - WAHA_API_KEY=${WAHA_API_KEY}
-      - WAHA_DASHBOARD_USERNAME=${WAHA_DASHBOARD_USERNAME}
-      - WAHA_DASHBOARD_PASSWORD=${WAHA_DASHBOARD_PASSWORD}
-      - WHATSAPP_SWAGGER_USERNAME=${WHATSAPP_SWAGGER_USERNAME}
-      - WHATSAPP_SWAGGER_PASSWORD=${WHATSAPP_SWAGGER_PASSWORD}
-      - WAHA_DASHBOARD_ENABLED=${WAHA_DASHBOARD_ENABLED:-true}
-      - WHATSAPP_SWAGGER_ENABLED=${WHATSAPP_SWAGGER_ENABLED:-true}
-      - WAHA_BASE_URL=http://waha:3000
-      - REDIS_URL=redis://redis:6379
-      - WHATSAPP_SESSIONS_POSTGRESQL_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      WAHA_API_KEY: "${WAHA_API_KEY}"
+      WAHA_BASE_URL: http://waha:3000
+      WAHA_DASHBOARD_ENABLED: "${WAHA_DASHBOARD_ENABLED:-true}"
+      WAHA_DASHBOARD_PASSWORD: "${WAHA_DASHBOARD_PASSWORD}"
+      WAHA_DASHBOARD_USERNAME: "${WAHA_DASHBOARD_USERNAME}"
+      WAHA_ENGINE: "${WAHA_ENGINE}"
+      WHATSAPP_SESSIONS_POSTGRESQL_URL: "postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${WAHA_DB_NAME:-waha}?sslmode=disable"
+      WHATSAPP_SWAGGER_ENABLED: "${WHATSAPP_SWAGGER_ENABLED:-true}"
+      WHATSAPP_SWAGGER_PASSWORD: "${WHATSAPP_SWAGGER_PASSWORD}"
+      WHATSAPP_SWAGGER_USERNAME: "${WHATSAPP_SWAGGER_USERNAME}"
     depends_on:
       redis:
         condition: service_healthy
@@ -830,27 +1417,25 @@ services:
     profiles: ["ragflow"]
     restart: unless-stopped
     environment:
-      - SVR_HTTP_PORT=80
-      - REDIS_HOST=ragflow-redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${RAGFLOW_REDIS_PASSWORD}
-      - MYSQL_HOST=ragflow-mysql
-      - MYSQL_PORT=3306
-      - MYSQL_USER=root
-      - MYSQL_PASSWORD=${RAGFLOW_MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=rag_flow
-      - DOC_ENGINE=elasticsearch
-      - ES_HOST=ragflow-elasticsearch
-      - ES_PORT=9200
-      - ELASTIC_PASSWORD=${RAGFLOW_ELASTICSEARCH_PASSWORD}
-      - MINIO_HOST=ragflow-minio
-      - MINIO_PORT=9000
-      - MINIO_USER=minio
-      - MINIO_PASSWORD=${RAGFLOW_MINIO_ROOT_PASSWORD}
-      - MINIO_BUCKET=ragflow
-    volumes:
-      - ragflow_data:/ragflow
-      - ./ragflow/nginx.conf:/etc/nginx/sites-available/default:ro
+      <<: *proxy-env
+      DOC_ENGINE: elasticsearch
+      ELASTIC_PASSWORD: "${RAGFLOW_ELASTICSEARCH_PASSWORD}"
+      ES_HOST: ragflow-elasticsearch
+      ES_PORT: 9200
+      MINIO_BUCKET: ragflow
+      MINIO_HOST: ragflow-minio
+      MINIO_PASSWORD: "${RAGFLOW_MINIO_ROOT_PASSWORD}"
+      MINIO_PORT: 9000
+      MINIO_USER: minio
+      MYSQL_DATABASE: rag_flow
+      MYSQL_HOST: ragflow-mysql
+      MYSQL_PASSWORD: "${RAGFLOW_MYSQL_ROOT_PASSWORD}"
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      REDIS_HOST: ragflow-redis
+      REDIS_PASSWORD: "${RAGFLOW_REDIS_PASSWORD}"
+      REDIS_PORT: 6379
+      SVR_HTTP_PORT: 9380
     depends_on:
       ragflow-elasticsearch:
         condition: service_healthy
@@ -867,8 +1452,8 @@ services:
     profiles: ["ragflow"]
     restart: unless-stopped
     environment:
-      - MYSQL_ROOT_PASSWORD=${RAGFLOW_MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=rag_flow
+      MYSQL_ROOT_PASSWORD: "${RAGFLOW_MYSQL_ROOT_PASSWORD}"
+      MYSQL_DATABASE: rag_flow
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost || exit 1"]
       interval: 10s
@@ -879,15 +1464,15 @@ services:
       - ragflow_mysql_data:/var/lib/mysql
 
   ragflow-minio:
-    image: minio/minio
+    image: quay.io/minio/minio:latest
     container_name: ragflow-minio
     profiles: ["ragflow"]
     restart: unless-stopped
     entrypoint: sh
     command: -c 'mkdir -p /data/ragflow && minio server --address ":9000" --console-address ":9001" /data'
     environment:
-      - MINIO_ROOT_USER=minio
-      - MINIO_ROOT_PASSWORD=${RAGFLOW_MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: "${RAGFLOW_MINIO_ROOT_PASSWORD}"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -902,7 +1487,7 @@ services:
     container_name: ragflow-redis
     profiles: ["ragflow"]
     restart: unless-stopped
-    command: valkey-server --save 30 1 --loglevel warning --requirepass ${RAGFLOW_REDIS_PASSWORD}
+    command: "valkey-server --save 30 1 --loglevel warning --requirepass ${RAGFLOW_REDIS_PASSWORD}"
     volumes:
       - ragflow_redis_data:/data
     cap_drop:
@@ -911,11 +1496,7 @@ services:
       - SETGID
       - SETUID
       - DAC_OVERRIDE
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "1"
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "valkey-cli", "-a", "${RAGFLOW_REDIS_PASSWORD}", "ping"]
       interval: 3s
@@ -928,16 +1509,16 @@ services:
     profiles: ["ragflow"]
     restart: unless-stopped
     environment:
-      - node.name=ragflow-es01
-      - discovery.type=single-node
-      - ELASTIC_PASSWORD=${RAGFLOW_ELASTICSEARCH_PASSWORD}
-      - bootstrap.memory_lock=false
-      - xpack.security.enabled=true
-      - xpack.security.http.ssl.enabled=false
-      - xpack.security.transport.ssl.enabled=false
-      - cluster.routing.allocation.disk.watermark.low=5gb
-      - cluster.routing.allocation.disk.watermark.high=3gb
-      - cluster.routing.allocation.disk.watermark.flood_stage=2gb
+      node.name: ragflow-es01
+      discovery.type: single-node
+      ELASTIC_PASSWORD: "${RAGFLOW_ELASTICSEARCH_PASSWORD}"
+      bootstrap.memory_lock: false
+      xpack.security.enabled: true
+      xpack.security.http.ssl.enabled: false
+      xpack.security.transport.ssl.enabled: false
+      cluster.routing.allocation.disk.watermark.low: 5gb
+      cluster.routing.allocation.disk.watermark.high: 3gb
+      cluster.routing.allocation.disk.watermark.flood_stage: 2gb
     ulimits:
       memlock:
         soft: -1
@@ -967,77 +1548,72 @@ services:
     container_name: lightrag
     profiles: ["lightrag"]
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
+      <<: *proxy-env
       # Server Configuration
-      - HOST=0.0.0.0
-      - PORT=9621
-      - WEBUI_TITLE=LightRAG Knowledge Graph
-      - WEBUI_DESCRIPTION=Graph-based RAG with Knowledge Extraction
-
+      HOST: 0.0.0.0
+      PORT: 9621
+      WEBUI_TITLE: LightRAG Knowledge Graph
+      WEBUI_DESCRIPTION: Graph-based RAG with Knowledge Extraction
       # Authentication (Built-in)
-      - AUTH_ACCOUNTS=${LIGHTRAG_USERNAME}:${LIGHTRAG_PASSWORD}
-      - LIGHTRAG_API_KEY=${LIGHTRAG_API_KEY}
-
+      AUTH_ACCOUNTS: "${LIGHTRAG_USERNAME}:${LIGHTRAG_PASSWORD}"
+      LIGHTRAG_API_KEY: "${LIGHTRAG_API_KEY}"
+      TOKEN_SECRET: "${LIGHTRAG_TOKEN_SECRET}"
       # LLM Configuration (Ollama)
-      - LLM_BINDING=ollama
-      - LLM_MODEL=qwen2.5:32b
-      - LLM_BINDING_HOST=http://ollama:11434
-      - OLLAMA_LLM_NUM_CTX=32768
-      - MAX_ASYNC=4
-
+      LLM_BINDING: ollama
+      LLM_MODEL: qwen2.5:32b
+      LLM_BINDING_HOST: http://ollama:11434
+      OLLAMA_LLM_NUM_CTX: 32768
+      MAX_ASYNC: 4
       # Embedding Configuration (Ollama)
-      - EMBEDDING_BINDING=ollama
-      - EMBEDDING_MODEL=bge-m3:latest
-      - EMBEDDING_DIM=1024
-      - EMBEDDING_BINDING_HOST=http://ollama:11434
-      - OLLAMA_EMBEDDING_NUM_CTX=8192
-      - EMBEDDING_FUNC_MAX_ASYNC=16
-      - EMBEDDING_BATCH_NUM=32
-
+      EMBEDDING_BINDING: ollama
+      EMBEDDING_MODEL: bge-m3:latest
+      EMBEDDING_DIM: 1024
+      EMBEDDING_BINDING_HOST: http://ollama:11434
+      OLLAMA_EMBEDDING_NUM_CTX: 8192
+      EMBEDDING_FUNC_MAX_ASYNC: 16
+      EMBEDDING_BATCH_NUM: 32
       # Query Configuration
-      - ENABLE_LLM_CACHE=true
-      - TOP_K=60
-      - CHUNK_TOP_K=20
-      - COSINE_THRESHOLD=0.2
-      - MAX_ENTITY_TOKENS=6000
-      - MAX_RELATION_TOKENS=8000
-      - MAX_TOTAL_TOKENS=30000
-
+      ENABLE_LLM_CACHE: true
+      TOP_K: 60
+      CHUNK_TOP_K: 20
+      COSINE_THRESHOLD: 0.2
+      MAX_ENTITY_TOKENS: 6000
+      MAX_RELATION_TOKENS: 8000
+      MAX_TOTAL_TOKENS: 30000
       # Document Processing
-      - ENABLE_LLM_CACHE_FOR_EXTRACT=true
-      - SUMMARY_LANGUAGE=English
-      - CHUNK_SIZE=1200
-      - CHUNK_OVERLAP_SIZE=100
-      - SUMMARY_MAX_TOKENS=500
-      - SUMMARY_CONTEXT_SIZE=10000
-
+      ENABLE_LLM_CACHE_FOR_EXTRACT: true
+      SUMMARY_LANGUAGE: English
+      CHUNK_SIZE: 1200
+      CHUNK_OVERLAP_SIZE: 100
+      SUMMARY_MAX_TOKENS: 500
+      SUMMARY_CONTEXT_SIZE: 10000
       # Storage Configuration (Flexible - uses PostgreSQL/Neo4j if available)
-      - LIGHTRAG_KV_STORAGE=JsonKVStorage
-      - LIGHTRAG_DOC_STATUS_STORAGE=JsonDocStatusStorage
-      - LIGHTRAG_GRAPH_STORAGE=${LIGHTRAG_GRAPH_STORAGE:-NetworkXStorage}
-      - LIGHTRAG_VECTOR_STORAGE=${LIGHTRAG_VECTOR_STORAGE:-NanoVectorDBStorage}
-
+      LIGHTRAG_KV_STORAGE: JsonKVStorage
+      LIGHTRAG_DOC_STATUS_STORAGE: JsonDocStatusStorage
+      LIGHTRAG_GRAPH_STORAGE: "${LIGHTRAG_GRAPH_STORAGE:-NetworkXStorage}"
+      LIGHTRAG_VECTOR_STORAGE: "${LIGHTRAG_VECTOR_STORAGE:-NanoVectorDBStorage}"
       # PostgreSQL Configuration (if using PostgreSQL storage)
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DATABASE=postgres
-      - POSTGRES_MAX_CONNECTIONS=12
-      - POSTGRES_VECTOR_INDEX_TYPE=HNSW
-      - POSTGRES_HNSW_M=16
-      - POSTGRES_HNSW_EF=200
-
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DATABASE: "${LIGHTRAG_DB_NAME:-lightrag}"
+      POSTGRES_MAX_CONNECTIONS: 12
+      POSTGRES_VECTOR_INDEX_TYPE: HNSW
+      POSTGRES_HNSW_M: 16
+      POSTGRES_HNSW_EF: 200
       # Neo4j Configuration (if using Neo4j storage)
-      - NEO4J_URI=bolt://neo4j:7687
-      - NEO4J_USERNAME=${NEO4J_AUTH_USERNAME:-neo4j}
-      - NEO4J_PASSWORD=${NEO4J_AUTH_PASSWORD}
-      - NEO4J_DATABASE=neo4j
-
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: "${NEO4J_AUTH_USERNAME:-neo4j}"
+      NEO4J_PASSWORD: "${NEO4J_AUTH_PASSWORD}"
+      NEO4J_DATABASE: neo4j
       # Directories
-      - INPUT_DIR=/app/data/inputs
-      - WORKING_DIR=/app/data/rag_storage
-
+      INPUT_DIR: /app/data/inputs
+      WORKING_DIR: /app/data/rag_storage
     volumes:
       - lightrag_data:/app/data/rag_storage
       - lightrag_inputs:/app/data/inputs
@@ -1049,7 +1625,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "wget -qO- http://localhost:9621/health > /dev/null 2>&1 || exit 1",
+          "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9621/health', timeout=5)\" > /dev/null 2>&1 || exit 1",
         ]
       interval: 30s
       timeout: 10s
@@ -1057,15 +1633,16 @@ services:
       start_period: 60s
 
   docling:
-    image: ${DOCLING_IMAGE:-ghcr.io/docling-project/docling-serve-cpu}
+    image: "${DOCLING_IMAGE:-ghcr.io/docling-project/docling-serve-cpu}"
     container_name: docling
     profiles: ["docling"]
     restart: unless-stopped
     environment:
-      - DOCLING_SERVE_ENABLE_UI=1
-      - DOCLING_SERVE_ENABLE_REMOTE_SERVICES=${DOCLING_SERVE_ENABLE_REMOTE_SERVICES:-true}
-      - DOCLING_SERVE_LOAD_MODELS_AT_BOOT=${DOCLING_SERVE_LOAD_MODELS_AT_BOOT:-false}
-      - DOCLING_DEVICE=${DOCLING_DEVICE:-cpu}
+      <<: *proxy-env
+      DOCLING_SERVE_ENABLE_UI: 1
+      DOCLING_SERVE_ENABLE_REMOTE_SERVICES: "${DOCLING_SERVE_ENABLE_REMOTE_SERVICES:-true}"
+      DOCLING_SERVE_LOAD_MODELS_AT_BOOT: "${DOCLING_SERVE_LOAD_MODELS_AT_BOOT:-false}"
+      DOCLING_DEVICE: "${DOCLING_DEVICE:-cpu}"
     volumes:
       - docling_cache:/opt/app-root/src/.cache
     shm_size: 1g
@@ -1073,8 +1650,26 @@ services:
       test:
         [
           "CMD-SHELL",
-          "wget -qO- http://localhost:5001/docs > /dev/null || exit 1",
+          "http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= wget -qO- http://localhost:5001/docs > /dev/null || exit 1",
         ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    container_name: uptime-kuma
+    profiles: ["uptime-kuma"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *proxy-env
+      UPTIME_KUMA_WS_ORIGIN_CHECK: bypass
+    volumes:
+      - uptime_kuma_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const http=require('http');const r=http.get('http://localhost:3001',res=>{process.exit(res.statusCode<400?0:1)});r.on('error',()=>process.exit(1));r.setTimeout(5000,()=>{r.destroy();process.exit(1)})\""]
       interval: 30s
       timeout: 10s
       retries: 5

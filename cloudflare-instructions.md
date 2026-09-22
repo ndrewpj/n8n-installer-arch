@@ -1,6 +1,4 @@
-# Add this section to README.md after the "Quick Start" section
-
-## 🔒 Secure Access with Cloudflare Tunnel (Optional)
+# 🔒 Secure Access with Cloudflare Tunnel (Optional)
 
 Cloudflare Tunnel provides zero-trust access to your services without exposing any ports on your server. All traffic is routed through Cloudflare's secure network, providing DDoS protection and hiding your server's IP address.
 
@@ -8,7 +6,7 @@ Cloudflare Tunnel provides zero-trust access to your services without exposing a
 
 Cloudflare Tunnel **bypasses Caddy** and connects directly to your services. This means:
 - You get Cloudflare's security features (DDoS protection, Web Application Firewall, etc.)
-- You lose Caddy's authentication features (basic auth for Prometheus, Grafana, etc.)
+- You lose Caddy's authentication features (basic auth for Prometheus, ComfyUI, SearXNG, etc.)
 - Each service needs its own public hostname configuration in Cloudflare
 
 ### Benefits
@@ -22,53 +20,137 @@ Cloudflare Tunnel **bypasses Caddy** and connects directly to your services. Thi
 
 #### 1. Create a Cloudflare Tunnel
 
-1. Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
-2. Navigate to **Access** → **Tunnels**
+1. Go to [Cloudflare One Dashboard](https://one.dash.cloudflare.com/)
+2. Navigate to **Networks** → **Connectors** → **Cloudflare Tunnels**
 3. Click **Create a tunnel**
-4. Choose **Cloudflared** connector
-5. Name your tunnel (e.g., "n8n-install")
-6. Copy the tunnel token (you'll need this during installation)
+4. Select **Cloudflared** as the connector type and click **Next**
+5. Name your tunnel (e.g., "selfhost-ai") and click **Save tunnel**
+6. Copy the installation command shown - it contains your tunnel token
 
-#### 2. Configure Public Hostnames
+#### 2. DNS Configuration (Critical!)
 
-In the tunnel configuration, you need to create a public hostname for **each service** you want to expose. Click **Add a public hostname** for each entry:
+⚠️ **Important**: For Cloudflare Tunnel to work, your domain's DNS **must be managed by Cloudflare**. When DNS is managed by Cloudflare:
+- Public hostnames automatically create CNAME records pointing to the tunnel
+- Records appear with **Proxy status ON** (orange cloud)
+- Traffic routes through Cloudflare's network
 
-| Service        | Public Hostname           | Service URL                | Notes                          |
-| -------------- | ------------------------- | -------------------------- | ------------------------------ |
-| **n8n**        | n8n.yourdomain.com        | `http://n8n:5678`          | Workflow automation            |
-| **Flowise**    | flowise.yourdomain.com    | `http://flowise:3001`      | LangChain UI                   |
-| **Dify**       | dify.yourdomain.com       | `http://nginx:80`          | AI application platform        |
-| **Open WebUI** | webui.yourdomain.com      | `http://open-webui:8080`   | Chat interface                 |
-| **Langfuse**   | langfuse.yourdomain.com   | `http://langfuse-web:3000` | LLM observability              |
-| **Supabase**   | supabase.yourdomain.com   | `http://kong:8000`         | Backend as a Service           |
-| **Grafana**    | grafana.yourdomain.com    | `http://grafana:3000`      | Metrics dashboard (⚠️ No auth)  |
-| **Prometheus** | prometheus.yourdomain.com | `http://prometheus:9090`   | Metrics collection (⚠️ No auth) |
-| **Portainer**  | portainer.yourdomain.com  | `http://portainer:9000`    | Docker management              |
-| **Letta**      | letta.yourdomain.com      | `http://letta:8283`        | Memory management              |
-| **Weaviate**   | weaviate.yourdomain.com   | `http://weaviate:8080`     | Vector database                |
-| **Qdrant**     | qdrant.yourdomain.com     | `http://qdrant:6333`       | Vector database                |
-| **ComfyUI**    | comfyui.yourdomain.com    | `http://comfyui:8188`      | Image generation (⚠️ No auth)   |
-| **Neo4j**      | neo4j.yourdomain.com      | `http://neo4j:7474`        | Graph database                 |
-| **SearXNG**    | searxng.yourdomain.com    | `http://searxng:8080`      | Private search (⚠️ No auth)     |
+##### Option A: Transfer DNS to Cloudflare (Recommended)
 
-**⚠️ Security Warning:** Services marked with "No auth" normally have basic authentication through Caddy. When using Cloudflare Tunnel, you should:
-- Enable [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) for these services, OR
-- Keep them internal only (don't create public hostnames for them)
+If your domain DNS is managed elsewhere (DigitalOcean, GoDaddy, Namecheap, etc.), you need to transfer it to Cloudflare:
 
-#### 3. DNS Configuration
+1. **Add domain to Cloudflare**:
+   - Go to [Cloudflare Dashboard](https://dash.cloudflare.com/)
+   - Click **Add a site** → enter your domain (e.g., `yourdomain.com`)
+   - Select the **Free** plan (or higher)
+   - Cloudflare will scan existing DNS records
 
-When you create public hostnames in the tunnel configuration, Cloudflare automatically creates the necessary DNS records. These will appear in your DNS dashboard as CNAME records pointing to the tunnel, with **Proxy status ON** (orange cloud).
+2. **Review DNS records**:
+   - Cloudflare imports your existing records automatically
+   - Verify all records are present (especially A records for your server)
+   - **Delete** any A records for subdomains you want to route through the tunnel
 
-**Note:** If DNS records aren't created automatically:
-1. Go to your domain's DNS settings in Cloudflare
-2. Add CNAME records manually:
-   - **Name**: Service subdomain (e.g., `n8n`)
-   - **Target**: Your tunnel ID (shown in tunnel dashboard)
-   - **Proxy status**: ON (orange cloud)
+3. **Update nameservers at your registrar**:
+   - Cloudflare shows two nameservers (e.g., `anna.ns.cloudflare.com`, `bob.ns.cloudflare.com`)
+   - Go to your domain registrar (DigitalOcean, GoDaddy, Namecheap, etc.)
+   - Change nameservers from current to Cloudflare's nameservers
+   - **DigitalOcean example**: Networking → Domains → your domain → change NS records
+
+4. **Wait for propagation**:
+   - DNS propagation takes 5 minutes to 48 hours (usually under 1 hour)
+   - Most users see propagation complete within 10-30 minutes
+   - Check status: `dig NS yourdomain.com` — should show Cloudflare nameservers
+   - Cloudflare dashboard will show "Active" when complete
+
+##### Option B: External DNS with Manual CNAME (Not Recommended)
+
+> **Warning**: This approach is for advanced users only. You lose most Cloudflare benefits and must maintain DNS records manually. Strongly consider Option A instead.
+
+If you cannot transfer DNS to Cloudflare, you can manually create CNAME records pointing to the tunnel. **Note**: This provides limited functionality — no automatic DNS management, no orange cloud proxy benefits.
+
+1. **Get your tunnel ID**:
+   ```bash
+   # From tunnel logs
+   docker compose -p localai logs cloudflared 2>&1 | grep "Connector ID"
+   ```
+   Or find it in Cloudflare Zero Trust → Tunnels → your tunnel → Overview
+
+2. **Create CNAME in your DNS provider** (e.g., DigitalOcean):
+   ```
+   Type:    CNAME
+   Name:    databasus (or your subdomain)
+   Value:   <tunnel-id>.cfargotunnel.com
+   TTL:     Auto or 300
+   ```
+
+3. **Limitations of this approach**:
+   - No Cloudflare proxy benefits (DDoS protection limited)
+   - No automatic DNS record management
+   - Must manually update if tunnel ID changes
+   - Some Cloudflare features won't work
+
+##### Verifying DNS Configuration
+
+After setup, verify DNS points to Cloudflare:
+
+```bash
+# Check if domain resolves to Cloudflare IPs
+dig +short yourdomain.com
+
+# Cloudflare IPs are in ranges: 104.x.x.x, 172.x.x.x, etc.
+# Your server IP means DNS is NOT going through Cloudflare
+
+# Check nameservers
+dig NS yourdomain.com +short
+# Should show: xxx.ns.cloudflare.com
+```
+
+#### 3. Configure Public Hostnames
+
+After DNS is configured, go to **Cloudflare One Dashboard** → **Networks** → **Connectors** → **Cloudflare Tunnels** → your tunnel → **Public Hostname** tab. For each service you want to expose, click **Add a public hostname** and configure:
+
+| Service            | Public Hostname               | Service URL                  | Auth Notes          |
+| ------------------ | ----------------------------- | ---------------------------- | ------------------- |
+| **n8n**            | n8n.yourdomain.com            | `http://n8n:5678`            | Built-in login      |
+| **ComfyUI**        | comfyui.yourdomain.com        | `http://comfyui:8188`        | ⚠️ Loses Caddy auth  |
+| **Databasus**      | databasus.yourdomain.com      | `http://databasus:4005`      | Built-in login      |
+| **Dify** ¹         | dify.yourdomain.com           | `http://nginx:80`            | Built-in login      |
+| **Docling**        | docling.yourdomain.com        | `http://docling:5001`        | ⚠️ Loses Caddy auth  |
+| **Flowise**        | flowise.yourdomain.com        | `http://flowise:3001`        | Built-in login      |
+| **Grafana**        | grafana.yourdomain.com        | `http://grafana:3000`        | Built-in login      |
+| **InvokeAI**       | invokeai.yourdomain.com       | `http://invokeai:9090`       | ⚠️ Loses Caddy auth  |
+| **Langfuse**       | langfuse.yourdomain.com       | `http://langfuse-web:3000`   | Built-in login      |
+| **Letta**          | letta.yourdomain.com          | `http://letta:8283`          | No auth             |
+| **LibreTranslate** | libretranslate.yourdomain.com | `http://libretranslate:5000` | ⚠️ Loses Caddy auth  |
+| **LightRAG**       | lightrag.yourdomain.com       | `http://lightrag:9621`       | No auth             |
+| **Neo4j**          | neo4j.yourdomain.com          | `http://neo4j:7474`          | Built-in login      |
+| **NocoDB**         | nocodb.yourdomain.com         | `http://nocodb:8080`         | Built-in login      |
+| **Open WebUI**     | webui.yourdomain.com          | `http://open-webui:8080`     | Built-in login      |
+| **PaddleOCR**      | paddleocr.yourdomain.com      | `http://paddleocr:8080`      | ⚠️ Loses Caddy auth  |
+| **Portainer**      | portainer.yourdomain.com      | `http://portainer:9000`      | Built-in login      |
+| **Postiz**         | postiz.yourdomain.com         | `http://postiz:5000`         | Built-in login      |
+| **Prometheus**     | prometheus.yourdomain.com     | `http://prometheus:9090`     | ⚠️ Loses Caddy auth  |
+| **Qdrant**         | qdrant.yourdomain.com         | `http://qdrant:6333`         | API key recommended |
+| **RAGApp**         | ragapp.yourdomain.com         | `http://ragapp:8000`         | ⚠️ Loses Caddy auth  |
+| **RagFlow**        | ragflow.yourdomain.com        | `http://ragflow:80`          | Built-in login      |
+| **SearXNG**        | searxng.yourdomain.com        | `http://searxng:8080`        | ⚠️ Loses Caddy auth  |
+| **Supabase** ¹     | supabase.yourdomain.com       | `http://kong:8000`           | Built-in login      |
+| **WAHA**           | waha.yourdomain.com           | `http://waha:3000`           | API key recommended |
+| **Weaviate**       | weaviate.yourdomain.com       | `http://weaviate:8080`       | API key recommended |
+| **Welcome Page** ² | welcome.yourdomain.com        | `http://caddy:80`            | ⚠️ Loses Caddy auth  |
+
+**Notes:**
+- ¹ Dify and Supabase use external compose files from adjacent directories
+- ² Welcome Page is served by Caddy as static content; tunnel proxies through Caddy
+
+**⚠️ Security Warning:**
+- Services marked **"Loses Caddy auth"** have basic authentication via Caddy that is bypassed by the tunnel. Use [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) or keep them internal.
+- Services marked **"No auth"** have no protection at all - always use Cloudflare Access for these.
+- Services with **"Built-in login"** have their own authentication and are generally safe to expose.
+- Services with **"API key recommended"** should be configured with API keys in their settings.
 
 #### 4. Install with Tunnel Support
 
-1. Run the n8n-install as normal:
+1. Run the Selfhost AI installation as normal:
    ```bash
    sudo bash ./scripts/install.sh
    ```
@@ -106,14 +188,15 @@ You have two options for accessing your services:
 
 For services that lose Caddy's basic auth protection, you can add Cloudflare Access:
 
-1. In Cloudflare Zero Trust → Access → Applications
-2. Click **Add an application**
-3. Select **Self-hosted**
-4. Configure:
+1. In **Cloudflare One Dashboard** → **Access** → **Applications** (or **Access controls** → **Applications** depending on your dashboard version)
+2. Click **Add an application** → **Self-hosted**
+3. Configure:
    - **Application name**: e.g., "Prometheus"
-   - **Application domain**: `prometheus.yourdomain.com`
-   - **Identity providers**: Configure your preferred auth method
-5. Create access policies (who can access the service)
+   - **Session Duration**: Set token expiry time
+   - Click **Add public hostname** and select your domain
+4. Enable your preferred identity providers (Google, GitHub, etc.)
+5. Add access policies to control who can access the service
+6. Save the application
 
 ### 🛡️ Advanced Security with WAF Rules
 
@@ -121,18 +204,12 @@ Cloudflare's Web Application Firewall (WAF) allows you to create sophisticated s
 
 #### Creating IP Allow Lists
 
-1. **Go to Cloudflare Dashboard** → **Manage Account** → **Configurations** → **Lists**
+1. Go to **Cloudflare Dashboard** → **Settings** → **Lists**
 2. Click **Create new list**
 3. Configure:
-   - **List name**: `approved_IP_addresses`
+   - **List name**: `approved_ip_addresses` (lowercase letters, numbers, underscores only)
    - **Content type**: IP Address
-4. Add IP addresses:
-   ```
-   # Example entries:
-   1.2.3.4         # Office IP
-   5.6.7.0/24      # Partner network
-   10.0.0.0/8      # Internal network
-   ```
+4. Click **Create**, then **Add items** to add IP addresses manually or via CSV upload
 
 #### Protecting n8n Webhooks with WAF Rules
 
@@ -143,88 +220,50 @@ n8n webhooks need special consideration because they must be publicly accessible
 3. **Rule name**: "Protect n8n webhooks"
 4. **Expression Builder** or use **Edit expression**:
 
-**Example 1: Block all except approved IPs for entire domain**
-```
-(not ip.src in $approved_IP_addresses and http.host contains "yourdomain.com")
-```
-- **Action**: Block
-- **Description**: Blocks all traffic except from approved IPs
+**Example expressions:**
 
-**Example 2: Protect n8n but allow specific webhook paths**
-```
-(http.host eq "n8n.yourdomain.com" and not ip.src in $approved_IP_addresses and not http.request.uri.path contains "/webhook/")
-```
-- **Action**: Block
-- **Description**: Protects n8n UI but allows webhook endpoints
-
-**Example 3: Allow webhooks from specific services only**
-```
-(http.host eq "n8n.yourdomain.com" and http.request.uri.path contains "/webhook/" and not ip.src in $webhook_allowed_IPs)
-```
-- **Action**: Block
-- **Description**: Webhooks only accessible from specific service IPs
-
-**Example 4: Rate limiting for webhook endpoints**
-```
-(http.host eq "n8n.yourdomain.com" and http.request.uri.path contains "/webhook/")
-```
-- **Action**: Managed Challenge
-- **Description**: Add CAPTCHA if suspicious activity detected
+| Rule                                 | Expression                                                                                                                        | Action            |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| Block all except approved IPs        | `(not ip.src in $approved_ip_addresses and http.host contains "yourdomain.com")`                                                  | Block             |
+| Protect UI, allow webhooks           | `(http.host eq "n8n.yourdomain.com" and not ip.src in $approved_ip_addresses and not http.request.uri.path contains "/webhook/")` | Block             |
+| Restrict webhooks to services        | `(http.host eq "n8n.yourdomain.com" and http.request.uri.path contains "/webhook/" and not ip.src in $webhook_allowed_ips)`       | Block             |
+| Challenge suspicious webhook traffic | `(http.host eq "n8n.yourdomain.com" and http.request.uri.path contains "/webhook/")`                                              | Managed Challenge |
 
 #### Common Security Rule Patterns
 
 | Use Case                             | Expression                                                                                                | Action                  | Notes                                  |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------- |
-| **Protect webhooks (CRITICAL)**      | `(http.request.uri.path contains "/webhook" and not ip.src in $webhook_service_IPs)`                      | Block                   | Webhooks have NO auth - must restrict! |
-| **Protect all services**             | `(not ip.src in $approved_IP_addresses)`                                                                  | Block                   | Strictest - only approved IPs          |
+| **Protect webhooks (CRITICAL)**      | `(http.request.uri.path contains "/webhook" and not ip.src in $webhook_service_ips)`                      | Block                   | Webhooks have NO auth - must restrict! |
+| **Protect all services**             | `(not ip.src in $approved_ip_addresses)`                                                                  | Block                   | Strictest - only approved IPs          |
 | **Geographic restrictions**          | `(ip.geoip.country ne "US" and ip.geoip.country ne "GB")`                                                 | Block                   | Allow only specific countries          |
 | **Block bots on sensitive services** | `(http.host in {"prometheus.yourdomain.com" "grafana.yourdomain.com"} and cf.bot_management.score lt 30)` | Block                   | Blocks likely bots                     |
 | **Moderate UI protection**           | `(not http.request.uri.path contains "/webhook" and cf.threat_score gt 30)`                               | Managed Challenge       | UI has login, less strict              |
 | **Rate limit webhooks**              | `(http.request.uri.path contains "/webhook/")`                                                            | Rate Limit (10 req/min) | Additional webhook protection          |
-| **Separate webhook types**           | `(http.request.uri.path contains "/webhook/stripe" and not ip.src in $stripe_IPs)`                        | Block                   | Service-specific webhook protection    |
+| **Separate webhook types**           | `(http.request.uri.path contains "/webhook/stripe" and not ip.src in $stripe_ips)`                        | Block                   | Service-specific webhook protection    |
 
 #### Service-Specific Security Strategies
 
-**n8n (CRITICAL - Webhooks are the highest risk):**
-
-⚠️ **Important**: n8n webhooks have NO built-in authentication and can trigger powerful workflows. They need STRONGER protection than the UI (which has login protection).
-
+**n8n (CRITICAL):** Webhooks have NO auth and can trigger powerful workflows.
 ```
-# Rule 1: STRICT webhook protection - only allow from known service IPs
-(http.host eq "n8n.yourdomain.com" and 
- (http.request.uri.path contains "/webhook/" or 
-  http.request.uri.path contains "/webhook-test/") and 
- not ip.src in $webhook_service_IPs)
-Action: Block
-Note: webhook_service_IPs should ONLY contain verified service IPs (Stripe, GitHub, etc.)
-
-# Rule 2: Moderate UI protection - has login screen protection
-(http.host eq "n8n.yourdomain.com" and 
- not http.request.uri.path contains "/webhook" and
- cf.threat_score gt 30)
-Action: Managed Challenge
-Note: UI has login protection, so can be less strict than webhooks
-```
-
-**Why this approach:**
-- **Webhooks = No Auth** = Need IP allowlisting
-- **UI = Has Login** = Can use lighter protection
-- **Never expose webhooks broadly** - They can trigger database changes, send emails, call APIs
-
-**Flowise:**
-```
-# API endpoints from approved IPs, public chatbot access
-(http.host eq "flowise.yourdomain.com" and 
- http.request.uri.path contains "/api/" and 
- not ip.src in $api_allowed_IPs)
+# Webhook protection - only from known service IPs
+(http.host eq "n8n.yourdomain.com" and
+ http.request.uri.path contains "/webhook" and
+ not ip.src in $webhook_service_ips)
 Action: Block
 ```
 
-**Monitoring Services (Grafana/Prometheus):**
+**Flowise:** Protect API endpoints while allowing public chatbot access.
 ```
-# Strict IP allowlist for monitoring
-(http.host in {"grafana.yourdomain.com" "prometheus.yourdomain.com"} and 
- not ip.src in $monitoring_team_IPs)
+(http.host eq "flowise.yourdomain.com" and
+ http.request.uri.path contains "/api/" and
+ not ip.src in $api_allowed_ips)
+Action: Block
+```
+
+**Monitoring (Grafana/Prometheus):** Use strict IP allowlists.
+```
+(http.host in {"grafana.yourdomain.com" "prometheus.yourdomain.com"} and
+ not ip.src in $monitoring_team_ips)
 Action: Block
 ```
 
@@ -234,73 +273,21 @@ Create separate lists for different access levels:
 
 | List Name               | Purpose                     | Example IPs                   |
 | ----------------------- | --------------------------- | ----------------------------- |
-| `approved_IP_addresses` | General admin access        | Office IPs, VPN endpoints     |
-| `webhook_allowed_IPs`   | Services that call webhooks | Stripe, GitHub, Slack servers |
-| `monitoring_team_IPs`   | DevOps team access          | Team member home IPs          |
-| `api_consumer_IPs`      | Third-party API access      | Partner service IPs           |
+| `approved_ip_addresses` | General admin access        | Office IPs, VPN endpoints     |
+| `webhook_allowed_ips`   | Services that call webhooks | Stripe, GitHub, Slack servers |
+| `monitoring_team_ips`   | DevOps team access          | Team member home IPs          |
+| `api_consumer_ips`      | Third-party API access      | Partner service IPs           |
 
 #### Webhook Security Best Practices
 
-⚠️ **CRITICAL**: Webhooks are your biggest security risk! Unlike the UI which has login protection, webhooks have NO authentication and can directly execute workflows that might:
-- Access your database
-- Send emails/messages  
-- Call external APIs with your credentials
-- Modify data
-- Trigger financial transactions
+⚠️ **CRITICAL**: Webhooks have NO authentication and can execute powerful workflows. Always protect them with IP allowlists.
 
-**Essential Protection Steps:**
-
-1. **Never expose webhooks to the entire internet**
-   - Always use IP allowlists for webhook endpoints
-   - Only add IPs of services that legitimately need webhook access
-
-2. **Create strict webhook IP allowlists**:
-   ```
-   $webhook_service_IPs should only contain:
-   - GitHub webhook IPs: 192.30.252.0/22, 185.199.108.0/22, etc.
-   - Stripe webhook IPs: 3.18.12.63, 3.130.192.231, etc.
-   - Your specific partner/integration IPs
-   - Your monitoring service IPs
-   ```
-
-3. **Use webhook-specific paths** in n8n:
-   - Production: `/webhook/prod-[unique-id]`
-   - Testing: `/webhook-test/test-[unique-id]`
-   - Never use simple, guessable webhook URLs
-
-4. **Implement webhook signatures** in n8n workflows:
-   - Always verify HMAC signatures from services like GitHub/Stripe
-   - Add header validation in your n8n workflows
-   - Reject requests without proper signatures
-
-5. **Create separate rules for different webhook types**:
-   ```
-   # Stripe webhooks - only from Stripe's published IPs
-   (http.host eq "n8n.yourdomain.com" and 
-    http.request.uri.path contains "/webhook/stripe" and 
-    not ip.src in $stripe_webhook_IPs)
-   Action: Block
-   
-   # Internal webhooks - only from your infrastructure
-   (http.host eq "n8n.yourdomain.com" and 
-    http.request.uri.path contains "/webhook/internal" and 
-    not ip.src in $internal_system_IPs)
-   Action: Block
-   ```
-
-6. **Add rate limiting as additional protection**:
-   ```
-   # Rate limit even approved webhook IPs
-   (http.host eq "n8n.yourdomain.com" and 
-    http.request.uri.path contains "/webhook/")
-   Action: Rate Limit (10 requests per minute)
-   ```
-
-7. **Monitor webhook access closely**:
-   - Check Cloudflare Analytics → Security → Events regularly
-   - Set up alerts for blocked webhook attempts
-   - Review which IPs are trying to access your webhooks
-   - Investigate any unexpected webhook triggers
+**Key Protection Steps:**
+1. **Use IP allowlists** - Only allow IPs from services that need webhook access (GitHub, Stripe, etc.)
+2. **Use unique webhook paths** - e.g., `/webhook/prod-abc123` instead of guessable URLs
+3. **Verify signatures** - Check HMAC signatures from GitHub/Stripe in your n8n workflows
+4. **Add rate limiting** - Prevent abuse even from approved IPs
+5. **Monitor regularly** - Check Cloudflare Analytics → Security → Events for blocked attempts
 
 #### Testing Your Rules
 
@@ -325,26 +312,84 @@ Create separate lists for different access levels:
 
 #### Important Considerations
 
-- **Webhook IPs can change**: Services like GitHub, Stripe publish their webhook IP ranges - add these to your lists
+- **Webhook IPs can change**: Services like GitHub, Stripe publish their webhook IP ranges - keep your lists updated
 - **Development vs Production**: Consider separate rules for development environments
 - **Bypass for emergencies**: Keep a "break glass" rule you can quickly enable for emergency access
-- **API rate limits**: Implement rate limiting on webhook endpoints to prevent abuse
 - **Logging**: Enable logging on security rules to track access patterns
 
 ### Verifying Tunnel Connection
 
-Check if the tunnel is running:
+#### Step 1: Check tunnel container is running
+
 ```bash
-docker logs cloudflared --tail 20
+docker compose -p localai ps cloudflared
+docker compose -p localai logs cloudflared --tail 20
 ```
 
 You should see:
 ```
-INF Registered tunnel connection connIndex=0
+INF Registered tunnel connection connIndex=0 ... location=xxx protocol=quic
+INF Registered tunnel connection connIndex=1 ... location=xxx protocol=quic
 INF Updated to new configuration
 ```
 
+#### Step 2: Verify traffic goes through Cloudflare
+
+This is the most important check — confirms your domain uses the tunnel, not direct connection:
+
+```bash
+# Check for Cloudflare headers
+curl -sI https://yourdomain.com | grep -iE '^(cf-|server:)'
+```
+
+**✅ Working through Cloudflare** — you'll see:
+```
+server: cloudflare
+cf-ray: 8a1b2c3d4e5f6g7h-YYZ
+```
+
+**❌ NOT through Cloudflare** — you'll see:
+```
+server: Caddy
+```
+or no `cf-ray` header at all.
+
+#### Step 3: Check DNS resolution
+
+```bash
+# Should return Cloudflare IPs, NOT your server IP
+dig +short yourdomain.com
+
+# Quick check: is it Cloudflare? (requires whois: apt install whois)
+whois $(dig +short yourdomain.com | head -1) 2>/dev/null | grep -i cloudflare
+```
+
+If you see your server's IP (e.g., `137.184.x.x`), DNS is not configured correctly.
+
+#### Quick one-liner test
+
+```bash
+curl -sI https://yourdomain.com 2>/dev/null | grep -q "cf-ray" && echo "✓ Traffic goes through Cloudflare Tunnel" || echo "✗ Traffic goes DIRECTLY to server (tunnel not working)"
+```
+
+**Note**: This test requires `curl` and a working HTTPS connection. If you're debugging early setup before SSL is working, use `dig` commands from Step 3 instead.
+
+#### Common issues if verification fails
+
+| Symptom | Cause | Solution |
+|---------|-------|----------|
+| No `cf-ray` header | DNS points to server IP | Transfer DNS to Cloudflare or create CNAME |
+| `server: Caddy` | Traffic bypasses tunnel | Check DNS, delete A records for subdomains |
+| Tunnel connected but no traffic | Missing public hostname | Add hostname in Zero Trust dashboard |
+| DNS shows server IP | Nameservers not updated | Update NS records at registrar |
+
 ### Troubleshooting
+
+**Tunnel running but traffic goes directly to server (no `cf-ray` header):**
+- **Most common cause**: DNS is managed outside Cloudflare (e.g., DigitalOcean, GoDaddy)
+- **Solution**: Transfer DNS to Cloudflare (see "DNS Configuration" section above)
+- **Quick check**: `dig NS yourdomain.com +short` — should show `xxx.ns.cloudflare.com`
+- If DNS is external, you must create CNAME records manually pointing to `<tunnel-id>.cfargotunnel.com`
 
 **"Too many redirects" error:**
 - Make sure you're pointing to the service directly (e.g., `http://n8n:5678`), NOT to Caddy
@@ -361,6 +406,18 @@ INF Updated to new configuration
 - Check tunnel logs: `docker logs cloudflared`
 - Ensure the service is running: `docker ps`
 - Verify service name and port in tunnel configuration
+
+**"ERR Cannot determine default origin certificate path":**
+- This warning in logs is normal for token-based tunnels
+- Does not affect functionality — tunnel still works
+
+**Tunnel unstable or failing to connect (QUIC/UDP blocked):**
+- Some ISPs and firewalls block UDP traffic, which the QUIC protocol requires
+- **Solution**: Set `CLOUDFLARE_TUNNEL_PROTOCOL=http2` in `.env` (uses TCP instead) and recreate the tunnel:
+  ```bash
+  docker compose -p localai up -d --force-recreate cloudflared
+  ```
+- Valid values: `auto` (default, prefers QUIC and falls back to HTTP/2 at startup), `quic`, `http2`
 
 **Mixed mode (tunnel + direct access):**
 - You can run both tunnel and traditional Caddy access simultaneously

@@ -1,0 +1,10 @@
+# TLS Configuration Snippet
+# Imported by all service blocks in the main Caddyfile.
+#
+# Default: Empty (uses Let's Encrypt automatic certificates)
+# Custom: Overwritten by 'make setup-tls' with your certificate paths
+# Reset: Run 'make setup-tls --remove' to restore Let's Encrypt
+
+(service_tls) {
+    # Default: Let's Encrypt automatic certificates (empty = no override)
+}

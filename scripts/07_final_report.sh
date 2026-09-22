@@ -1,455 +1,199 @@
 #!/bin/bash
+# =============================================================================
+# 07_final_report.sh - Post-installation summary and credentials display
+# =============================================================================
+# Generates and displays the final installation report after all services
+# are running.
+#
+# Actions:
+#   - Generates welcome page data (via generate_welcome_page.sh)
+#   - Displays Welcome Page URL and credentials
+#   - Shows next steps for configuring individual services
+#   - Provides guidance for first-run setup of n8n, Portainer, Flowise, etc.
+#
+# The Welcome Page serves as a central dashboard with all service credentials
+# and access URLs, protected by basic auth.
+#
+# Usage: bash scripts/07_final_report.sh
+# =============================================================================
 
 set -e
 
-# Source the utilities file
+# Source the utilities file and initialize paths
 source "$(dirname "$0")/utils.sh"
-
-# Get the directory where the script resides
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
-ENV_FILE="$PROJECT_ROOT/.env"
-
-# Check if .env file exists
-if [ ! -f "$ENV_FILE" ]; then
-    log_error "The .env file ('$ENV_FILE') was not found."
-    exit 1
-fi
+init_paths
 
 # Load environment variables from .env file
-# Use set -a to export all variables read from the file
-set -a
-source "$ENV_FILE"
-set +a
+load_env || exit 1
 
-# Function to check if a profile is active
-is_profile_active() {
-    local profile_to_check="$1"
-    # COMPOSE_PROFILES is sourced from .env and will be available here
-    if [ -z "$COMPOSE_PROFILES" ]; then
-        return 1 # Not active if COMPOSE_PROFILES is empty or not set
-    fi
-    # Check if the profile_to_check is in the comma-separated list
-    # Adding commas at the beginning and end of both strings handles edge cases
-    # (e.g., single profile, profile being a substring of another)
-    if [[ ",$COMPOSE_PROFILES," == *",$profile_to_check,"* ]]; then
-        return 0 # Active
-    else
-        return 1 # Not active
-    fi
+# Generate welcome page data
+if [ -f "$SCRIPT_DIR/generate_welcome_page.sh" ]; then
+    log_info "Generating welcome page..."
+    bash "$SCRIPT_DIR/generate_welcome_page.sh" || log_warning "Failed to generate welcome page"
+fi
+
+# Helper function to print a divider line
+print_line() {
+    echo -e "${DIM}${GREEN}$(printf '%.0s-' {1..70})${NC}"
 }
 
-# --- Service Access Credentials ---
+# Helper function to print a credential row
+print_credential() {
+    local label="$1"
+    local value="$2"
+    printf "  ${CYAN}%-12s${NC} ${WHITE}%s${NC}\n" "$label:" "$value"
+}
 
-# Display credentials, checking if variables exist
-echo
-log_info "Service Access Credentials. Save this information securely!"
-# Display credentials, checking if variables exist
+# Helper function to print section header
+print_section() {
+    local title="$1"
+    echo ""
+    echo -e "${BOLD}${BRIGHT_GREEN}  $title${NC}"
+    echo -e "  ${DIM}$(printf '%.0s-' {1..40})${NC}"
+}
 
+# Clear screen for clean presentation
+clear
+
+# Header
+log_box "Installation/Update Complete"
+
+# --- Welcome Page Section ---
+print_section "Welcome Page"
+echo ""
+echo -e "  ${WHITE}All your service credentials are available here:${NC}"
+echo ""
+print_credential "URL" "https://${WELCOME_HOSTNAME:-welcome.${USER_DOMAIN_NAME}}"
+print_credential "Username" "${WELCOME_USERNAME:-<not_set>}"
+print_credential "Password" "${WELCOME_PASSWORD:-<not_set>}"
+echo ""
+echo -e "  ${DIM}The Welcome Page shows all installed services with their${NC}"
+echo -e "  ${DIM}hostnames, credentials, and internal URLs.${NC}"
+
+# --- Next Steps Section ---
+print_section "Next Steps"
+echo ""
+echo -e "  ${WHITE}1.${NC} Visit your Welcome Page to view all credentials"
+echo -e "     ${CYAN}https://${WELCOME_HOSTNAME:-welcome.${USER_DOMAIN_NAME}}${NC}"
+echo ""
+echo -e "  ${WHITE}2.${NC} Store the Welcome Page credentials securely"
+echo ""
+echo -e "  ${WHITE}3.${NC} Configure services as needed:"
+if is_profile_active "appsmith"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}Appsmith${NC}: Create admin account on first login (may take a few minutes to start)"
+fi
 if is_profile_active "n8n"; then
-  echo
-  echo "================================= n8n ================================="
-  echo
-  echo "Host: ${N8N_HOSTNAME:-<hostname_not_set>}"
+    echo -e "     ${GREEN}*${NC} ${WHITE}n8n${NC}: Complete first-run setup with your email"
 fi
-
-if is_profile_active "open-webui"; then
-  echo
-  echo "================================= WebUI ==============================="
-  echo
-  echo "Host: ${WEBUI_HOSTNAME:-<hostname_not_set>}"
+if is_profile_active "n8n-mcp"; then
+    if [ -z "${N8N_API_KEY:-}" ]; then
+        echo -e "     ${GREEN}*${NC} ${WHITE}n8n-MCP${NC}: running in documentation-only mode"
+        echo -e "       To enable workflow management: in n8n open Settings > n8n API,"
+        echo -e "       create an API key, set N8N_API_KEY in .env, then run 'make restart'"
+    else
+        echo -e "     ${GREEN}*${NC} ${WHITE}n8n-MCP${NC}: workflow-management tools enabled (N8N_API_KEY is set)"
+    fi
+    if [ -z "${N8N_MCP_ACCESS_TOKEN:-}" ]; then
+        echo -e "       Optional: set N8N_MCP_ACCESS_TOKEN in .env (n8n Settings > Instance-level MCP > Connect > API key)"
+        echo -e "       to unlock agents, version history and dynamic node resources, then run 'make restart'"
+    fi
+    echo -e "       Connect your IDE (token is on the Welcome Page):"
+    echo -e "       ${CYAN}npx -y mcp-remote https://${N8N_MCP_HOSTNAME:-<N8N_MCP_HOSTNAME>}/mcp --header \"Authorization: Bearer <N8N_MCP_AUTH_TOKEN>\"${NC}"
 fi
-
-if is_profile_active "flowise"; then
-  echo
-  echo "================================= Flowise ============================="
-  echo
-  echo "Host: ${FLOWISE_HOSTNAME:-<hostname_not_set>}"
-  echo "User: ${FLOWISE_USERNAME:-<not_set_in_env>}"
-  echo "Password: ${FLOWISE_PASSWORD:-<not_set_in_env>}"
+if is_profile_active "n8n-sandbox"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}n8n Assistant${NC}: the code sandbox is configured. In n8n open Settings > Instance AI"
+    echo -e "       and add a model API key to switch the assistant on"
+    if [ "${N8N_SANDBOX_RUNNER_RUNTIME:-runc}" = "sysbox-runc" ] && [ "${N8N_SANDBOX_RUNNER_PRIVILEGED:-false}" = "true" ]; then
+        echo -e "       ${RED}Sandbox runner is misconfigured (sysbox-runc together with privileged) and cannot start - run 'make update'${NC}"
+    elif [ "${N8N_SANDBOX_RUNNER_RUNTIME:-runc}" = "sysbox-runc" ]; then
+        echo -e "       Sandbox runner isolated with sysbox-runc"
+    elif [ "${N8N_SANDBOX_RUNNER_PRIVILEGED:-false}" = "true" ]; then
+        echo -e "       ${YELLOW}Sandbox runner runs PRIVILEGED (Sysbox could not be installed) - root-equivalent on this host${NC}"
+    else
+        echo -e "       ${RED}Sandbox runner is neither sysbox-isolated nor privileged and cannot start - run 'make update'${NC}"
+    fi
 fi
-
-if is_profile_active "dify"; then
-  echo
-  echo "================================= Dify ================================="
-  echo
-  echo "Host: ${DIFY_HOSTNAME:-<hostname_not_set>}"
-  echo "Description: AI Application Development Platform with LLMOps"
-  echo
-  echo "API Access:"
-  echo "  - Web Interface: https://${DIFY_HOSTNAME:-<hostname_not_set>}"
-  echo "  - API Endpoint: https://${DIFY_HOSTNAME:-<hostname_not_set>}/v1"
-  echo "  - Internal API: http://dify-api:5001"
-fi
-
-if is_profile_active "supabase"; then
-  echo
-  echo "================================= Supabase ============================"
-  echo
-  echo "External Host (via Caddy): ${SUPABASE_HOSTNAME:-<hostname_not_set>}"
-  echo "Studio User: ${DASHBOARD_USERNAME:-<not_set_in_env>}"
-  echo "Studio Password: ${DASHBOARD_PASSWORD:-<not_set_in_env>}"
-  echo
-  echo "Internal API Gateway: http://kong:8000"
-  echo "Service Role Secret: ${SERVICE_ROLE_KEY:-<not_set_in_env>}"
-fi
-
-if is_profile_active "langfuse"; then
-  echo
-  echo "================================= Langfuse ============================"
-  echo
-  echo "Host: ${LANGFUSE_HOSTNAME:-<hostname_not_set>}"
-  echo "User: ${LANGFUSE_INIT_USER_EMAIL:-<not_set_in_env>}"
-  echo "Password: ${LANGFUSE_INIT_USER_PASSWORD:-<not_set_in_env>}"
-fi
-
-if is_profile_active "monitoring"; then
-  echo
-  echo "================================= Grafana ============================="
-  echo
-  echo "Host: ${GRAFANA_HOSTNAME:-<hostname_not_set>}"
-  echo "User: admin"
-  echo "Password: ${GRAFANA_ADMIN_PASSWORD:-<not_set_in_env>}"
-  echo
-  echo "================================= Prometheus =========================="
-  echo
-  echo "Host: ${PROMETHEUS_HOSTNAME:-<hostname_not_set>}"
-  echo "User: ${PROMETHEUS_USERNAME:-<not_set_in_env>}"
-  echo "Password: ${PROMETHEUS_PASSWORD:-<not_set_in_env>}"
-fi
-
-if is_profile_active "searxng"; then
-  echo
-  echo "================================= Searxng ============================="
-  echo
-  echo "Host: ${SEARXNG_HOSTNAME:-<hostname_not_set>}"
-  echo "User: ${SEARXNG_USERNAME:-<not_set_in_env>}"
-  echo "Password: ${SEARXNG_PASSWORD:-<not_set_in_env>}"
-fi
-
 if is_profile_active "portainer"; then
-  echo
-  echo "================================= Portainer ==========================="
-  echo
-  echo "Host: ${PORTAINER_HOSTNAME:-<hostname_not_set>}"
-  echo "(Note: On first login, Portainer will prompt to set up an admin user.)"
+    echo -e "     ${GREEN}*${NC} ${WHITE}Portainer${NC}: Create admin account on first login"
 fi
-
+if is_profile_active "databasus"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}Databasus${NC}: Create account and configure backup schedules"
+fi
+if is_profile_active "flowise"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}Flowise${NC}: Register and create your account"
+fi
+if is_profile_active "open-webui"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}Open WebUI${NC}: Register your account"
+    if [ "${OPEN_WEBUI_DATABASE:-sqlite}" != "postgres" ]; then
+        echo -e "       ${WHITE}Storage${NC}: SQLite. PostgreSQL avoids 'database is locked' errors with"
+        echo -e "       several tabs/devices - see 'Open WebUI: SQLite or PostgreSQL' in the README"
+        echo -e "       (switching requires manual data migration)."
+    else
+        echo -e "       ${WHITE}Storage${NC}: PostgreSQL (database 'openwebui')"
+        # Verify that claim against the running stack, not against .env. Two
+        # separate things can be wrong, and each looks fine from the other side:
+        # the compose override can be missing (container silently on SQLite, so
+        # the app just looks empty), or the database can be absent (Open WebUI
+        # answers /health anyway and 500s on every request).
+        if ! docker inspect open-webui >/dev/null 2>&1; then
+            echo -e "       ${RED}WARNING${NC}: the open-webui container does not exist, so the storage"
+            echo -e "       backend could not be verified. Run 'make doctor' once it is up."
+        elif ! docker inspect open-webui --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+            | grep -q '^DATABASE_URL=postgresql://'; then
+            echo -e "       ${RED}WARNING${NC}: the running open-webui container has no PostgreSQL"
+            echo -e "       DATABASE_URL - it is on SQLite and will look EMPTY. Run 'make doctor'."
+        elif ! docker exec postgres pg_isready -U postgres >/dev/null 2>&1; then
+            echo -e "       ${RED}WARNING${NC}: PostgreSQL is not reachable, so the 'openwebui' database"
+            echo -e "       could not be verified. Run 'make doctor'."
+        elif ! docker exec postgres psql -U postgres -tAc \
+            "SELECT 1 FROM pg_database WHERE datname='openwebui'" 2>/dev/null | grep -q 1; then
+            echo -e "       ${RED}WARNING${NC}: the 'openwebui' database does not exist. Open WebUI will"
+            echo -e "       start but fail on every request. Re-run 'make update', then 'make doctor'."
+        fi
+    fi
+fi
+if is_profile_active "nocodb"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}NocoDB${NC}: Create your account on first login"
+fi
 if is_profile_active "postiz"; then
-  echo
-  echo "================================= Postiz =============================="
-  echo
-  echo "Host: ${POSTIZ_HOSTNAME:-<hostname_not_set>}"
-  echo "Internal Access (e.g., from n8n): http://postiz:5000"
+    echo -e "     ${GREEN}*${NC} ${WHITE}Postiz${NC}: Create your account on first login"
 fi
-
-if is_profile_active "postgresus"; then
-  echo
-  echo "================================= Postgresus =========================="
-  echo
-  echo "Host: ${POSTGRESUS_HOSTNAME:-<hostname_not_set>}"
-  echo "UI (external via Caddy): https://${POSTGRESUS_HOSTNAME:-<hostname_not_set>}"
-  echo "UI (internal): http://postgresus:4005"
-  echo "------ Backup Target (internal PostgreSQL) ------"
-  echo "PG version: ${POSTGRES_VERSION:-17}"
-  echo "Host: postgres"
-  echo "Port: ${POSTGRES_PORT:-5432}"
-  echo "Username: ${POSTGRES_USER:-postgres}"
-  echo "Password: ${POSTGRES_PASSWORD:-<not_set_in_env>}"
-  echo "DB name: ${POSTGRES_DB:-postgres}"
-  echo "Use HTTPS: false"
+if is_profile_active "uptime-kuma"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}Uptime Kuma${NC}: Create your account on first login"
 fi
-
-if is_profile_active "ragapp"; then
-  echo
-  echo "================================= RAGApp =============================="
-  echo
-  echo "Host: ${RAGAPP_HOSTNAME:-<hostname_not_set>}"
-  echo "Internal Access (e.g., from n8n): http://ragapp:8000"
-  echo "User: ${RAGAPP_USERNAME:-<not_set_in_env>}"
-  echo "Password: ${RAGAPP_PASSWORD:-<not_set_in_env>}"
-  echo "Admin: https://${RAGAPP_HOSTNAME:-<hostname_not_set>}/admin"
-  echo "API Docs: https://${RAGAPP_HOSTNAME:-<hostname_not_set>}/docs"
+if is_profile_active "gost"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}Gost Proxy${NC}: Routing AI traffic through external proxy"
 fi
-
-if is_profile_active "ragflow"; then
-  echo
-  echo "================================= RAGFlow ============================="
-  echo
-  echo "Host: ${RAGFLOW_HOSTNAME:-<hostname_not_set>}"
-  echo "API (external via Caddy): https://${RAGFLOW_HOSTNAME:-<hostname_not_set>}"
-  echo "API (internal): http://ragflow:80"
-  echo "Note: Uses built-in authentication (login/registration available in web UI)"
-fi
-
-if is_profile_active "comfyui"; then
-  echo
-  echo "================================= ComfyUI ============================="
-  echo
-  echo "Host: ${COMFYUI_HOSTNAME:-<hostname_not_set>}"
-  echo "User: ${COMFYUI_USERNAME:-<not_set_in_env>}"
-  echo "Password: ${COMFYUI_PASSWORD:-<not_set_in_env>}"
-fi
-
-if is_profile_active "libretranslate"; then
-  echo
-  echo "================================= LibreTranslate ==========================="
-  echo
-  echo "Host: ${LT_HOSTNAME:-<hostname_not_set>}"
-  echo "User: ${LT_USERNAME:-<not_set_in_env>}"
-  echo "Password: ${LT_PASSWORD:-<not_set_in_env>}"
-  echo "API (external via Caddy): https://${LT_HOSTNAME:-<hostname_not_set>}"
-  echo "API (internal): http://libretranslate:5000"
-  echo "Docs: https://github.com/LibreTranslate/LibreTranslate"
-fi
-
-if is_profile_active "qdrant"; then
-  echo
-  echo "================================= Qdrant =============================="
-  echo
-  echo "Dashboard: https://${QDRANT_HOSTNAME:-<hostname_not_set>}/dashboard"
-  echo "Host: https://${QDRANT_HOSTNAME:-<hostname_not_set>}"
-  echo "API Key: ${QDRANT_API_KEY:-<not_set_in_env>}"
-  echo "Internal REST API Access (e.g., from backend): http://qdrant:6333"
-fi
-
-if is_profile_active "crawl4ai"; then
-  echo
-  echo "================================= Crawl4AI ============================"
-  echo
-  echo "Internal Access (e.g., from n8n): http://crawl4ai:11235"
-  echo "(Note: Not exposed externally via Caddy by default)"
-fi
-
-if is_profile_active "docling"; then
-  echo
-  echo "================================= Docling ============================="
-  echo
-  echo "Web UI: https://${DOCLING_HOSTNAME:-<hostname_not_set>}/ui"
-  echo "API Docs: https://${DOCLING_HOSTNAME:-<hostname_not_set>}/docs"
-  echo
-  echo "Credentials (Caddy Basic Auth):"
-  echo "User: ${DOCLING_USERNAME:-<not_set_in_env>}"
-  echo "Password: ${DOCLING_PASSWORD:-<not_set_in_env>}"
-  echo
-  echo "API Endpoints:"
-  echo "External (via Caddy): https://${DOCLING_HOSTNAME:-<hostname_not_set>}"
-  echo "Internal (from n8n):  http://docling:5001"
-  echo
-  echo "VLM Pipeline (Vision Language Model):"
-  echo "  1. Load VLM model in Ollama via Open WebUI -> Settings -> Models"
-  echo "     Example: granite3.2-vision:2b"
-  echo
-  echo "  2. API request with VLM pipeline:"
-  echo '     curl -X POST "https://'"${DOCLING_HOSTNAME:-<hostname_not_set>}"'/v1/convert/source" \'
-  echo '       -H "Content-Type: application/json" \'
-  echo '       -u "'"${DOCLING_USERNAME:-<not_set_in_env>}"':'"${DOCLING_PASSWORD:-<not_set_in_env>}"'" \'
-  echo "       -d '{"
-  echo '         "source": "https://arxiv.org/pdf/2501.17887",'
-  echo '         "options": {'
-  echo '           "pipeline": "vlm",'
-  echo '           "vlm_pipeline_model_api": {'
-  echo '             "url": "http://ollama:11434/v1/chat/completions",'
-  echo '             "params": {"model": "granite3.2-vision:2b"},'
-  echo '             "prompt": "Convert this page to docling.",'
-  echo '             "timeout": 300'
-  echo "           }"
-  echo "         }"
-  echo "       }'"
-fi
-
-if is_profile_active "gotenberg"; then
-  echo
-  echo "================================= Gotenberg ============================"
-  echo
-  echo "Internal Access (e.g., from n8n): http://gotenberg:3000"
-  echo "API Documentation: https://gotenberg.dev/docs"
-  echo
-  echo "Common API Endpoints:"
-  echo "  HTML to PDF: POST /forms/chromium/convert/html"
-  echo "  URL to PDF: POST /forms/chromium/convert/url"
-  echo "  Markdown to PDF: POST /forms/chromium/convert/markdown"
-  echo "  Office to PDF: POST /forms/libreoffice/convert"
-fi
-
-if is_profile_active "waha"; then
-  echo
-  echo "============================== WAHA (WhatsApp HTTP API) =============================="
-  echo
-  echo "Dashboard: https://${WAHA_HOSTNAME:-<hostname_not_set>}/dashboard"
-  echo "Swagger:   https://${WAHA_HOSTNAME:-<hostname_not_set>}"
-  echo "Internal:  http://waha:3000"
-  echo
-  echo "Dashboard User: ${WAHA_DASHBOARD_USERNAME:-<not_set_in_env>}"
-  echo "Dashboard Pass: ${WAHA_DASHBOARD_PASSWORD:-<not_set_in_env>}"
-  echo "Swagger User:   ${WHATSAPP_SWAGGER_USERNAME:-<not_set_in_env>}"
-  echo "Swagger Pass:   ${WHATSAPP_SWAGGER_PASSWORD:-<not_set_in_env>}"
-  echo "API key (plain): ${WAHA_API_KEY_PLAIN:-<not_set_in_env>}"
-fi
-
-if is_profile_active "paddleocr"; then
-  echo
-  echo "================================= PaddleOCR ==========================="
-  echo
-  echo "Host: ${PADDLEOCR_HOSTNAME:-<hostname_not_set>}"
-  echo "User: ${PADDLEOCR_USERNAME:-<not_set_in_env>}"
-  echo "Password: ${PADDLEOCR_PASSWORD:-<not_set_in_env>}"
-  echo "API (external via Caddy): https://${PADDLEOCR_HOSTNAME:-<hostname_not_set>}"
-  echo "API (internal): http://paddleocr:8080"
-  echo "Docs: https://paddleocr.a2.fyi/docs"
-  echo "Notes: PaddleX Basic Serving (CPU), pipeline=OCR"
-fi
-
-if is_profile_active "python-runner"; then
-  echo
-  echo "================================= Python Runner ========================"
-  echo
-  echo "Internal Container DNS: python-runner"
-  echo "Mounted Code Directory: ./python-runner (host) -> /app (container)"
-  echo "Entry File: /app/main.py"
-  echo "(Note: Internal-only service with no exposed ports; view output via logs)"
-  echo "Logs: docker compose -p localai logs -f python-runner"
-fi
-
-if is_profile_active "n8n" || is_profile_active "langfuse"; then
-  echo
-  echo "================================= Redis (Valkey) ======================"
-  echo
-  echo "Internal Host: ${REDIS_HOST:-redis}"
-  echo "Internal Port: ${REDIS_PORT:-6379}"
-  echo "Password: ${REDIS_AUTH:-}"
-  echo "(Note: Primarily for internal service communication, not exposed externally by default)"
-fi
-
-if is_profile_active "letta"; then
-  echo
-  echo "================================= Letta ================================"
-  echo
-  echo "Host: ${LETTA_HOSTNAME:-<hostname_not_set>}"
-  echo "Authorization: Bearer ${LETTA_SERVER_PASSWORD}"
-fi
-
-if is_profile_active "lightrag"; then
-  echo
-  echo "================================= LightRAG ============================="
-  echo
-  echo "Host: ${LIGHTRAG_HOSTNAME:-<hostname_not_set>}"
-  echo "Web UI: https://${LIGHTRAG_HOSTNAME:-<hostname_not_set>}"
-  echo "Internal Access (e.g., from n8n): http://lightrag:9621"
-  echo ""
-  echo "Authentication (Web UI):"
-  echo "  User: ${LIGHTRAG_USERNAME:-<not_set_in_env>}"
-  echo "  Password: ${LIGHTRAG_PASSWORD:-<not_set_in_env>}"
-  echo ""
-  echo "API Access:"
-  echo "  API Key: ${LIGHTRAG_API_KEY:-<not_set_in_env>}"
-  echo "  API Docs: https://${LIGHTRAG_HOSTNAME:-<hostname_not_set>}/docs"
-  echo "  Ollama-compatible: https://${LIGHTRAG_HOSTNAME:-<hostname_not_set>}/v1/chat/completions"
-  echo ""
-  echo "Configuration:"
-  echo "  LLM: Ollama (qwen2.5:32b) at http://ollama:11434"
-  echo "  Embeddings: Ollama (bge-m3:latest) at http://ollama:11434"
-  echo "  Storage: Flexible (JSON/PostgreSQL/Neo4j based on installed services)"
-  echo ""
-  echo "Note: Requires Ollama to be installed and running for LLM and embeddings."
-  echo "      Upload documents via /app/data/inputs volume or Web UI."
-fi
-
 if is_profile_active "cpu" || is_profile_active "gpu-nvidia" || is_profile_active "gpu-amd"; then
-  echo
-  echo "================================= Ollama =============================="
-  echo
-  echo "Internal Access (e.g., from n8n, Open WebUI): http://ollama:11434"
-  echo "(Note: Ollama runs with the selected profile: cpu, gpu-nvidia, or gpu-amd)"
+    echo -e "     ${GREEN}*${NC} ${WHITE}Ollama API${NC}: To expose externally, point DNS at ${OLLAMA_HOSTNAME:-<OLLAMA_HOSTNAME>} and send 'Authorization: Bearer <token>' (see Welcome Page)"
+    OLLAMA_REPORT_COUNT="$(normalized_ollama_instance_count)"
+    if [ "$OLLAMA_REPORT_COUNT" -gt 1 ]; then
+        echo -e "     ${GREEN}*${NC} ${WHITE}Ollama instances${NC}: ${OLLAMA_REPORT_COUNT} configured (ollama, ollama2, ...), internal only at"
+        echo -e "       http://ollama<N>:11434, sharing one model store. Tune each with OLLAMA<N>_* in .env"
+    fi
 fi
-
-if is_profile_active "weaviate"; then
-  echo
-  echo "================================= Weaviate ============================"
-  echo
-  echo "Host: ${WEAVIATE_HOSTNAME:-<hostname_not_set>}"
-  echo "Admin User (for Weaviate RBAC): ${WEAVIATE_USERNAME:-<not_set_in_env>}"
-  echo "Weaviate API Key: ${WEAVIATE_API_KEY:-<not_set_in_env>}"
+if is_profile_active "open-terminal"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}Open Terminal${NC}: In Open WebUI open Admin Settings > Integrations > Open Terminal and add"
+    echo -e "       http://open-terminal:8000 with the API key from the Welcome Page. Admin-only until you grant access;"
+    echo -e "       everyone you grant gets a shell in a container on the internal Docker network (treat it like SSH access)"
 fi
-
-if is_profile_active "neo4j"; then
-  echo
-  echo "================================= Neo4j =================================="
-  echo
-  echo "Web UI Host: https://${NEO4J_HOSTNAME:-<hostname_not_set>}"
-  echo "Bolt Port (for drivers): 7687 (e.g., neo4j://\\${NEO4J_HOSTNAME:-<hostname_not_set>}:7687)"
-  echo "User (for Web UI & API): ${NEO4J_AUTH_USERNAME:-<not_set_in_env>}"
-  echo "Password (for Web UI & API): ${NEO4J_AUTH_PASSWORD:-<not_set_in_env>}"
-  echo
-  echo "HTTP API Access (e.g., for N8N):"
-  echo "  Authentication: Basic (use User/Password above)"
-  echo "  Cypher API Endpoint (POST): https://\\${NEO4J_HOSTNAME:-<hostname_not_set>}/db/neo4j/tx/commit"
-  echo "  Authorization Header Value (for 'Authorization: Basic <value>'): \$(echo -n \"${NEO4J_AUTH_USERNAME:-neo4j}:${NEO4J_AUTH_PASSWORD}\" | base64)"
+if is_profile_active "crawl4ai"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}Crawl4AI${NC}: Internal API at http://crawl4ai:11235 - requests must send 'Authorization: Bearer <token>' (token on Welcome Page)"
 fi
-
-# Standalone PostgreSQL (used by n8n, Langfuse, etc.)
-# Check if n8n or langfuse is active, as they use this PostgreSQL instance.
-# The Supabase section already details its own internal Postgres.
-if is_profile_active "n8n" || is_profile_active "langfuse"; then
-  # Check if Supabase is NOT active, to avoid confusion with Supabase's Postgres if both are present
-  # However, the main POSTGRES_PASSWORD is used by this standalone instance.
-  # Supabase has its own environment variables for its internal Postgres if configured differently,
-  # but the current docker-compose.yml uses the main POSTGRES_PASSWORD for langfuse's postgres dependency too.
-  # For clarity, we will label this distinctly.
-  echo
-  echo "==================== Standalone PostgreSQL (for n8n, Langfuse, etc.) ====================="
-  echo
-  echo "Host: postgres"
-  echo "Port: ${POSTGRES_PORT:-5432}"
-  echo "Database: ${POSTGRES_DB:-postgres}" # This is typically 'postgres' or 'n8n' for n8n, and 'langfuse' for langfuse, but refers to the service.
-  echo "User: ${POSTGRES_USER:-postgres}"
-  echo "Password: ${POSTGRES_PASSWORD:-<not_set_in_env>}"
-  echo "(Note: This is the PostgreSQL instance used by services like n8n and Langfuse.)"
-  echo "(It is separate from Supabase's internal PostgreSQL if Supabase is also enabled.)"
+if is_profile_active "comfyui-nvidia" || is_profile_active "comfyui-amd" || is_profile_active "comfyui-cpu"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}ComfyUI${NC}: Models and custom nodes persist in the comfyui_data volume; update ComfyUI itself through ComfyUI-Manager, not by pulling the image"
 fi
-
-echo
-echo "======================================================================="
-echo
-
-# --- Update Script Info (Placeholder) ---
-log_info "To update the services, run the 'update.sh' script: bash ./scripts/update.sh"
-
-# ============================================
-# Cloudflare Tunnel Security Notice
-# ============================================
-if is_profile_active "cloudflare-tunnel"; then
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "🔒 CLOUDFLARE TUNNEL SECURITY"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
-  echo "✅ Cloudflare Tunnel is configured and running!"
-  echo ""
-  echo "Your services are accessible through Cloudflare's secure network."
-  echo "All traffic is encrypted and routed through the tunnel."
-  echo ""
-  echo "🛡️  RECOMMENDED SECURITY ENHANCEMENT:"
-  echo "   For maximum security, close the following ports in your VPS firewall:"
-  echo "   • Port 80 (HTTP)"
-  echo "   • Port 443 (HTTPS)" 
-  echo "   • Port 7687 (Neo4j Bolt)"
-  echo ""
-  echo "   ⚠️  Only close ports AFTER confirming tunnel connectivity!"
-  echo ""
+if is_profile_active "invokeai-nvidia" || is_profile_active "invokeai-amd" || is_profile_active "invokeai-cpu"; then
+    echo -e "     ${GREEN}*${NC} ${WHITE}InvokeAI${NC}: Open the Model Manager on first visit and download a starter model before generating images"
 fi
+echo ""
+echo -e "  ${WHITE}4.${NC} Run ${CYAN}make doctor${NC} if you experience any issues"
 
-echo
-echo "======================================================================"
-echo
-echo "Next Steps:"
-echo "1. Review the credentials above and store them safely."
-echo "2. Access the services via their respective URLs (check \`docker compose ps\` if needed)."
-echo "3. Configure services as needed (e.g., first-run setup for n8n)."
-echo
-echo "======================================================================"
-echo
-log_info "Thank you for using this repository!"
-echo
-
-#chsh -s /usr/bin/zsh
+# --- Footer ---
+echo ""
+print_line
+echo ""
+echo -e "  ${BRIGHT_GREEN}Thank you for using Selfhost AI!${NC}"
+echo ""
+print_line
+echo ""
